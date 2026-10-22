@@ -7,7 +7,6 @@
     <img src="https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript&logoColor=white" alt="TypeScript">
     <img src="https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white" alt="Discord.js">
     <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green?logo=node.js&logoColor=white" alt="Node.js">
-    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Privacy-100%25%20Protected-brightgreen" alt="Privacy">
   </p>
 
@@ -147,9 +146,3 @@ G-CalBot/
 - **Zero Credential Sharing**: We never ask for your Google account password or full OAuth permissions.
 - **Ephemerality**: Calendar links and raw schedule queries are ephemeral and visible only to you.
 - **Data Isolation**: Multi-calendar tokens and private `.ics` URLs are stored locally on the server in atomic JSON storage (`data/database.json`), strictly excluded from source control.
-
----
-
-## 📄 License
-
-This project is open-source and available under the [MIT License](LICENSE).
