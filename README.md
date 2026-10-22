@@ -1,154 +1,155 @@
-# 📅 Google Calendar Discord Bot & Activity
+<div align="center">
 
-A Discord bot and interactive Activity that connects users to their Google Calendar via their private iCal link, providing automated DM reminders and dynamic live syncing without exposing their Gmail address to other members.
+  <h1>📅 Google Calendar for Discord</h1>
+  <p><strong>A privacy-focused Discord Bot & Embedded Activity for 24/7 calendar reminders, multi-calendar synchronization, and public schedule sharing.</strong></p>
+
+  <p>
+    <img src="https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript&logoColor=white" alt="TypeScript">
+    <img src="https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white" alt="Discord.js">
+    <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green?logo=node.js&logoColor=white" alt="Node.js">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+    <img src="https://img.shields.io/badge/Privacy-100%25%20Protected-brightgreen" alt="Privacy">
+  </p>
+
+</div>
+
+---
+
+## 🌟 Overview
+
+**G-CalBot** connects Discord users to their Google Calendar and university iCal feeds without ever requiring complex OAuth consent screens or exposing personal email addresses to server members. 
+
+Built as a hybrid system:
+- **Background Bot**: Continuously checks feeds 24/7 and delivers rich direct message (DM) alerts before upcoming events.
+- **Embedded Activity (Web Hub)**: A dark-mode dashboard running directly inside Discord voice/text channels to manage connected calendars, view upcoming events, and customize alert timings.
 
 ---
 
 ## ✨ Features
 
-- **🛡️ 100% Privacy Protected**:
-  - Uses Google Calendar's **Secret iCal URL**.
-  - All slash commands (`/calendar link`) and the Activity web UI are **ephemeral/private** — your Gmail address and secret link are never broadcast to other server members.
-- **🔄 True Auto-Updating**:
-  - Never need to paste a new link when your calendar changes.
-  - The bot dynamically re-fetches the live Google feed, picking up new, edited, rescheduled, or deleted events automatically.
-- **🔔 Background DM Reminders (24/7)**:
-  - Runs in the background and sends rich Discord direct messages before each event starts.
-  - Customizable alert timing: At event start (0m), 5m, 10m (default), 15m, 30m, or 1 hour prior.
-  - Full recurring event support (RRULE) and timezones.
-- **🚀 Discord Activity & Web Hub**:
-  - Embedded Discord Activity interface (or browser dashboard).
-  - Clean Discord dark-mode UI with live status badge, upcoming event list, test DM trigger, and one-click unlinking.
-- **☁️ 100% Free Hosting Ready**:
-  - Uses pure-JavaScript dependencies and zero native C++ compilation.
-  - Installs cleanly on Windows, macOS, Linux, and cloud containers.
-
----
-
-## 📁 Project Architecture
-
-```
-G-CalBot/
-├── public/
-│   └── index.html          # Sleek Discord Activity frontend
-├── src/
-│   ├── index.ts            # Entrypoint (starts Bot & Express server)
-│   ├── config.ts           # Environment variable loader
-│   ├── types.ts            # Data models & interfaces
-│   ├── db/
-│   │   └── storage.ts      # Zero-native JSON database with atomic writes
-│   ├── bot/
-│   │   ├── client.ts       # Discord.js bot client & slash registration
-│   │   └── commands/
-│   │       ├── calendar.ts # /calendar (link, unlink, view, settings, test, guide)
-│   │       └── activity.ts # /activity (launcher for Discord Activity)
-│   ├── calendar/
-│   │   ├── syncService.ts  # Fetches & parses ICS, handles RRULE recurring events
-│   │   └── reminderEngine.ts # Background cron loop that fires DM notifications
-│   └── server/
-│       └── app.ts          # Express API & Activity backend
-├── .env.example
-├── tsconfig.json
-└── package.json
-```
-
----
-
-## 🛠️ Step 1: Discord Developer Portal Setup
-
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Click **New Application** and give it a name (e.g. `Google Calendar`).
-3. Under **General Information**:
-   - Copy the **Application ID** (this is your `DISCORD_CLIENT_ID`).
-4. Under **OAuth2**:
-   - Copy the **Client Secret** (this is your `DISCORD_CLIENT_SECRET`).
-   - (For Discord Activity only) Under **Redirects**, add: `http://localhost:3000` (and later your cloud host URL).
-5. Under **Bot**:
-   - Click **Reset Token** and copy the token (this is your `DISCORD_TOKEN`).
-   - Enable **Privileged Gateway Intents** if needed (or standard intents).
-6. Under **OAuth2 > URL Generator**:
-   - Scopes: check `bot`, `applications.commands`.
-   - Bot Permissions: check `Send Messages`, `Embed Links`, `Use External Emojis`, `Read Message History`.
-   - Copy the generated URL and open it in your browser to invite the bot to your Discord server.
-7. (Optional - For Discord Activity):
-   - Under **Activities**, enable Activity testing and set the URL mapping to your server URL.
-
----
-
-## 💻 Step 2: Local Testing on Your Computer
-
-1. **Clone or open this repository** in VS Code.
-2. **Create your `.env` file**:
-   Copy `.env.example` to `.env`:
-   ```env
-   DISCORD_TOKEN=your_bot_token_here
-   DISCORD_CLIENT_ID=your_application_client_id_here
-   DISCORD_CLIENT_SECRET=your_client_secret_here
-   PORT=3000
-   SYNC_INTERVAL_MINUTES=5
-   ```
-3. **Start the development server**:
-   ```bash
-   npm run dev
-   ```
-4. You will see:
-   ```
-   🌐 Web & Activity server listening at http://localhost:3000
-   🤖 Discord bot logged in as Google Calendar#1234!
-   ✅ Application slash commands registered successfully!
-   ```
-5. Open `http://localhost:3000` in your browser to test the Activity UI, or use slash commands directly inside Discord!
-
----
-
-## 📖 How Users Connect Google Calendar
-
-Users do not need to share their calendar publicly or expose their email address.
-
-1. In Google Calendar ([calendar.google.com](https://calendar.google.com)):
-   - Under **My calendars** on the left, hover over your calendar, click the three dots (**⋮**), and choose **Settings and sharing**.
-   - Scroll down to the **"Integrate calendar"** section.
-   - Locate **"Secret address in iCal format"** (do NOT use the Public address).
-   - Click the copy button.
-2. In Discord:
-   - Type `/calendar link url:<paste your link>`
-   - Or open the Discord Activity and paste the link in the input box.
-3. The bot immediately validates the feed, previews upcoming events, and starts scheduling automated reminders!
+- **🛡️ 100% Privacy Protected**  
+  Uses Google Calendar's **Secret iCal Address**. All linking commands and web dashboards are private/ephemeral — your Gmail address and secret URLs are never shared with other server members.
+- **🔄 Multi-Calendar Support**  
+  Link multiple schedules simultaneously (e.g., Primary Google Calendar, university D2L/Canvas feeds, clubs, or work). Events are merged and tagged automatically.
+- **📢 Public Schedule Sharing (`/cal share`)**  
+  Share your schedule directly in channel chat for friends or teammates with dynamic Discord timestamps, custom timeframes (`tdy`, `tmr`, `3d`, `2w`), and zero email leaks.
+- **🔔 24/7 Background DM Reminders**  
+  Automated alerts sent straight to your DMs before events begin. Configurable lead times: at start (0m), 5m, 10m (default), 15m, 30m, or 1 hour prior. Full support for recurring events (`RRULE`) and timezones.
+- **🚀 User-Installable (Use Anywhere)**  
+  Installable directly to your personal Discord account so you can run slash commands and access your schedule across **any server**, DMs, or group chats.
+- **☁️ Zero-Native Dependencies**  
+  Built with pure-JavaScript dependencies (no C++ compiler requirements like `better-sqlite3`), allowing effortless 1-click deployments on free tiers (Render, Railway, Fly.io, etc.).
 
 ---
 
 ## 🤖 Slash Commands
 
-| Command | Short Alias | Description |
-| :--- | :--- | :--- |
-| `/calendar link <url> [name]` | `/cal link` | Privately connects a Google Calendar or course feed (.ics) with an optional label (e.g. `Crow`, `D2L`, `Family`). |
-| `/calendar share [until]` | `/cal share` | Posts your upcoming schedule publicly in chat (`tdy`, `tmr`, `3d`, `1w`, or custom number of days/weeks). |
-| `/calendar list` | `/cal list` | Lists all your connected calendars with their IDs and added dates. |
-| `/calendar unlink [calendar]` | `/cal unlink` | Disconnects a specific calendar by name or unlinks all. |
-| `/calendar view` | `/cal view` | Displays merged upcoming events from all your calendars with tags and interactive buttons. |
-| `/calendar settings <minutes>` | `/cal settings` | Sets alert lead time: At start (0m), 5m, 10m (default), 15m, 30m, 1h. |
-| `/calendar test` | `/cal test` | Dispatches an instant test reminder DM to confirm Discord DM settings. |
-| `/calendar guide` | `/cal guide` | Step-by-step visual tutorial on finding your secret iCal link. |
-| `/open` | `/o` | Sends an instant direct button link to open Google Calendar in browser. |
-| `/activity` | `/act` | Launches the interactive Discord Activity hub. |
+All commands feature short convenience aliases for quick typing:
+
+| Command | Short Alias | Description | Visibility |
+| :--- | :--- | :--- | :--- |
+| `/calendar link <url> [name]` | `/cal link` | Privately connects a Google Calendar or course `.ics` feed with a custom label. | Private |
+| `/calendar share [until]` | `/cal share` | Posts upcoming schedule in chat (`tdy`, `tmr`, `3d`, `1w`, or custom number of days/weeks). | **Public** |
+| `/calendar view` | `/cal view` | Displays merged upcoming events from all your calendars with direct calendar links. | Private |
+| `/calendar list` | `/cal list` | Lists all your connected calendars with their unique IDs and added dates. | Private |
+| `/calendar unlink [calendar]` | `/cal unlink` | Disconnects a specific calendar by name/ID, or unlinks all feeds. | Private |
+| `/calendar settings <minutes>`| `/cal settings` | Customizes reminder alert lead times (0m, 5m, 10m, 15m, 30m, 1h). | Private |
+| `/calendar test` | `/cal test` | Sends an instant test reminder DM to verify Discord privacy settings. | Private |
+| `/calendar guide` | `/cal guide` | Step-by-step tutorial on finding your Google Calendar private iCal address. | Private |
+| `/open` | `/o` | Sends a direct 1-click button to open Google Calendar in your browser. | Private |
+| `/activity` | `/act` | Launches the embedded Discord Activity dashboard. | Channel |
 
 ---
 
-## ☁️ Free Hosting Guide
+## 📖 How to Connect Your Calendar
 
-You can easily host this bot 24/7 on free container platforms like **Render**, **Railway**, or **Koyeb**:
+1. Open [Google Calendar](https://calendar.google.com) in your browser.
+2. In the left sidebar under **My calendars**, hover over your calendar, click the three dots (**⋮**), and select **Settings and sharing**.
+3. Scroll down to the **Integrate calendar** section.
+4. Locate **Secret address in iCal format** and click **Copy**.  
+   *(⚠️ Do not use the Public address; use the Secret address).*
+5. In Discord, run:
+   ```text
+   /cal link url: <paste your secret link> name: Primary
+   ```
+6. Or click **Launch Activity** to paste and manage feeds in the visual dashboard.
 
-### Deploying to Render (Free Tier):
-1. Push your repository to GitHub (ensure `.env` and `data/` are in `.gitignore`).
-2. Go to [render.com](https://render.com) and create a **New Web Service**.
-3. Connect your GitHub repository.
-4. Set:
-   - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm run start`
-5. Under **Environment Variables**, add:
-   - `DISCORD_TOKEN`
-   - `DISCORD_CLIENT_ID`
-   - `DISCORD_CLIENT_SECRET`
-   - `PORT`: `3000`
-6. Click **Create Web Service**. Once deployed, Render provides a free HTTPS URL (e.g. `https://my-calbot.onrender.com`) which you can also plug directly into Discord Developer Portal for the Activity!
+---
+
+## 🛠️ Self-Hosting & Deployment
+
+### Quick Local Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Carson-Cheung/G-CalBot.git
+   cd G-CalBot
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables:**  
+   Create a `.env` file in the root directory:
+   ```env
+   DISCORD_TOKEN=your_bot_token
+   DISCORD_CLIENT_ID=your_application_client_id
+   DISCORD_CLIENT_SECRET=your_application_client_secret
+   PORT=3000
+   SYNC_INTERVAL_MINUTES=5
+   ```
+
+4. **Run the bot:**
+   ```bash
+   # Development mode with hot reloading
+   npm run dev
+
+   # Production build
+   npm run build
+   npm run start
+   ```
+
+---
+
+## 📁 Repository Structure
+
+```text
+G-CalBot/
+├── public/                 # Discord Activity single-page app
+│   ├── index.html          # Embedded dark-mode dashboard
+│   ├── logo.svg            # Custom SVG branding
+│   └── icon-dark.png       # Dark-mode application icon
+├── src/
+│   ├── index.ts            # Application bootstrap (Bot + Express API)
+│   ├── config.ts           # Environment configuration loader
+│   ├── types.ts            # TypeScript interfaces & data models
+│   ├── bot/
+│   │   ├── client.ts       # Discord.js client & global/guild command registrar
+│   │   ├── const.ts        # Command identifiers & constants
+│   │   └── commands/       # Slash command handlers (/cal, /act, /o, launch)
+│   ├── calendar/
+│   │   ├── syncService.ts  # RFC 5545 iCal parser, recurrence & timezone handler
+│   │   └── reminderEngine.ts # Background cron loop for 24/7 automated alerts
+│   ├── db/
+│   │   └── storage.ts      # Lightweight atomic JSON storage engine
+│   └── server/
+│       └── app.ts          # Express API & Activity backend
+├── package.json
+└── tsconfig.json
+```
+
+---
+
+## 🔒 Security & Privacy
+
+- **Zero Credential Sharing**: We never ask for your Google account password or full OAuth permissions.
+- **Ephemerality**: Calendar links and raw schedule queries are ephemeral and visible only to you.
+- **Data Isolation**: Multi-calendar tokens and private `.ics` URLs are stored locally on the server in atomic JSON storage (`data/database.json`), strictly excluded from source control.
+
+---
+
+## 📄 License
+
+This project is open-source and available under the [MIT License](LICENSE).
