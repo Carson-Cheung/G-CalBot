@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Calendar for Discord</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #1e1f22;
+      --bg-card: #2b2d31;
+      --bg-input: #1e1f22;
+      --primary: #5865f2;
+      --primary-hover: #4752c4;
+      --gcal-blue: #4285f4;
+      --success: #23a55a;
+      --danger: #f23f43;
+      --text-normal: #dbdee1;
+      --text-muted: #949ba4;
+      --text-header: #f2f3f5;
+      --border: #35373c;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-normal);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 10px;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-header);
+    }
+
+    .sub-heading {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-header);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-success {
+      background-color: rgba(35, 165, 90, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(35, 165, 90, 0.3);
+    }
+
+    .badge-unlinked {
+      background-color: rgba(242, 63, 67, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(242, 63, 67, 0.3);
+    }
+
+    .info-box {
+      background-color: rgba(66, 133, 244, 0.08);
+      border-left: 4px solid var(--gcal-blue);
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .guide-accordion {
+      background-color: var(--bg-input);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+    }
+
+    .guide-accordion summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-header);
+      outline: none;
+    }
+
+    .guide-steps {
+      margin-top: 10px;
+      padding-left: 20px;
+      color: var(--text-normal);
+      line-height: 1.6;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input, select {
+      width: 100%;
+      background-color: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-header);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      border: none;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--border);
+      color: var(--text-header);
+    }
+
+    .btn-secondary:hover {
+      background-color: #43444b;
+    }
+
+    .btn-danger {
+      background-color: rgba(242, 63, 67, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(242, 63, 67, 0.3);
+    }
+
+    .btn-danger:hover {
+      background-color: rgba(242, 63, 67, 0.25);
+    }
+
+    .actions-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .event-item {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--gcal-blue);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .event-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-header);
+      margin-bottom: 4px;
+    }
+
+    .event-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 18px;
+      border-radius: 8px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      color: var(--text-header);
+      font-size: 0.88rem;
+      display: none;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-group">
+        <div class="logo-icon">
+          <img src="/logo.svg" alt="Google Calendar Discord">
+        </div>
+        <div>
+          <h1>Google Calendar</h1>
+          <div class="sub-heading">Discord Activity & Reminder Hub</div>
+        </div>
+      </div>
+      <div id="statusBadge" class="badge badge-unlinked">Not Linked</div>
+    </header>
+
+    <!-- Testing Account Switcher (when outside Discord) -->
+    <div id="devBar" class="card" style="padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 0.8rem; color: var(--text-muted);">Active Discord User ID:</span>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="text" id="customUserId" value="demo-user" style="padding: 4px 8px; font-size: 0.8rem; width: 140px;">
+        <button type="button" class="btn btn-secondary" id="switchUserBtn" style="padding: 4px 10px; font-size: 0.78rem;">Switch</button>
+      </div>
+    </div>
+
+    <!-- Calendar Link Card -->
+    <div class="card" id="linkCard">
+      <div class="card-title">
+        <span>Link Your Google Calendar</span>
+      </div>
+
+      <div class="info-box">
+        🔒 <strong>100% Privacy Protected:</strong> We use your Google Calendar's private iCal link. Your email address is never broadcasted to other Discord members, and all updates sync automatically.
+      </div>
+
+      <details class="guide-accordion">
+        <summary>ℹ️ Where to find your Secret iCal link in Google Calendar</summary>
+        <ol class="guide-steps">
+          <li>Open <a href="https://calendar.google.com" target="_blank" style="color: var(--primary);">calendar.google.com</a> on your browser.</li>
+          <li>On the left sidebar, hover over your calendar, click the three dots (<strong>⋮</strong>), and choose <strong>Settings and sharing</strong>.</li>
+          <li>Scroll down to the <strong>"Integrate calendar"</strong> section.</li>
+          <li>Find <strong>"Secret address in iCal format"</strong> and click Copy.</li>
+          <li>Paste the copied URL below!</li>
+        </ol>
+      </details>
+
+      <div id="calendarsContainer" style="margin-bottom: 16px; display: none;">
+        <label>Your Connected Calendars</label>
+        <div id="connectedList" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="calNameInput">Calendar Name (Optional)</label>
+        <input type="text" id="calNameInput" placeholder="e.g. Crow, Family, Work">
+      </div>
+
+      <div class="form-group">
+        <label for="icalInput">Secret iCal URL</label>
+        <input type="url" id="icalInput" placeholder="https://calendar.google.com/calendar/ical/.../private-.../basic.ics" required>
+      </div>
+
+      <div class="form-group">
+        <label for="leadMinutes">Reminder Alert Lead Time</label>
+        <select id="leadMinutes">
+          <option value="0">At event start (0 minutes)</option>
+          <option value="5">5 minutes before</option>
+          <option value="10" selected>10 minutes before (Default)</option>
+          <option value="15">15 minutes before</option>
+          <option value="30">30 minutes before</option>
+          <option value="60">1 hour before</option>
+        </select>
+      </div>
+
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="saveBtn">
+          🔗 Connect Calendar
+        </button>
+        <button type="button" class="btn btn-danger" id="unlinkBtn" style="display: none;">
+          Unlink All
+        </button>
+      </div>
+    </div>
+
+    <!-- Upcoming Events Card -->
+    <div class="card" id="eventsCard">
+      <div class="card-title">
+        <span>Upcoming Events</span>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" id="testBtn" style="padding: 6px 12px; font-size: 0.8rem;">
+            🔔 Test DM
+          </button>
+          <button type="button" class="btn btn-secondary" id="refreshBtn" style="padding: 6px 12px; font-size: 0.8rem;">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      <div id="eventsList" class="event-list">
+        <div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px 0;">
+          No calendar linked yet. Paste your secret iCal link above to load your schedule!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let currentUserId = 'demo-user';
+    let unlinkConfirmActive = false;
+    let unlinkConfirmTimer = null;
+    let toastTimer = null;
+
+    function showToast(msg, isSuccess = true) {
+      const toast = document.getElementById('toast');
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.style.borderColor = isSuccess ? 'var(--success)' : 'var(--danger)';
+      toast.style.color = isSuccess ? 'var(--text-header)' : '#ff7b72';
+      toast.style.display = 'block';
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.style.display = 'none'; }, 4500);
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
+    }
+
+    async function loadCalendar(showFeedback = false) {
+      const refreshBtn = document.getElementById('refreshBtn');
+      if (refreshBtn && showFeedback) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '🔄 Syncing...';
+      }
+
+      try {
+        const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/calendar`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (data.userId) {
+          currentUserId = data.userId;
+          const userField = document.getElementById('customUserId');
+          if (userField) userField.value = data.userId;
+        }
+
+        const badge = document.getElementById('statusBadge');
+        const unlinkBtn = document.getElementById('unlinkBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const calBox = document.getElementById('calendarsContainer');
+        const calList = document.getElementById('connectedList');
+
+        if (data.linked) {
+          const calCount = (data.calendars && data.calendars.length) || 1;
+          badge.className = 'badge badge-success';
+          badge.textContent = `${calCount} Active Calendar(s)`;
+          unlinkBtn.style.display = 'inline-flex';
+          unlinkBtn.textContent = 'Unlink All';
+          unlinkConfirmActive = false;
+          saveBtn.textContent = '➕ Add Calendar';
+
+          if (data.reminderMinutes !== undefined) {
+            document.getElementById('leadMinutes').value = String(data.reminderMinutes);
+          }
+
+          if (data.calendars && data.calendars.length > 0) {
+            calBox.style.display = 'block';
+            calList.innerHTML = data.calendars.map(c => `
+              <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);">
+                <span style="font-size: 0.88rem; font-weight: 500;">📅 ${escapeHtml(c.name)}</span>
+                <button type="button" class="btn btn-danger btn-remove-cal" data-cal-id="${escapeHtml(c.id)}" style="padding: 4px 10px; font-size: 0.75rem; cursor: pointer;">Remove</button>
+              </div>
+            `).join('');
+          } else {
+            calBox.style.display = 'none';
+            calList.innerHTML = '';
+          }
+
+          renderEvents(data.events || []);
+          if (showFeedback) {
+            showToast(`Refreshed! Found ${(data.events || []).length} upcoming events.`, true);
+          }
+        } else {
+          badge.className = 'badge badge-unlinked';
+          badge.textContent = 'Not Linked';
+          calBox.style.display = 'none';
+          calList.innerHTML = '';
+          unlinkBtn.style.display = 'none';
+          saveBtn.textContent = '🔗 Connect Calendar';
+          renderEvents([]);
+          if (showFeedback) {
+            showToast('No active calendar linked.', false);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user calendar:', err);
+        if (showFeedback) {
+          showToast('Could not load calendar data from server.', false);
+        }
+      } finally {
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = '🔄 Refresh';
+        }
+      }
+    }
+
+    async function unlinkSingleCalendar(calendarId, btn) {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Removing...';
+      }
+
+      try {
+        const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/calendar?calendarId=${encodeURIComponent(calendarId)}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('Calendar removed successfully.', true);
+          await loadCalendar();
+        } else {
+          showToast('Could not remove calendar: ' + (data.error || 'Server error'), false);
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Remove';
+          }
+        }
+      } catch (err) {
+        console.error('Failed to remove calendar:', err);
+        showToast('Network error while removing calendar.', false);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Remove';
+        }
+      }
+    }
+
+    async function saveCalendar() {
+      const icalInput = document.getElementById('icalInput');
+      const calNameInput = document.getElementById('calNameInput');
+      const icalUrl = icalInput.value.trim();
+      const name = calNameInput.value.trim();
+      const reminderMinutes = parseInt(document.getElementById('leadMinutes').value, 10);
+
+      if (!icalUrl) {
+        showToast('Please paste your Google Calendar secret iCal URL', false);
+        icalInput.focus();
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Connecting...';
+
+      try {
+        const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/calendar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ icalUrl, name, reminderMinutes })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          showToast(`Linked ${name || 'Calendar'} successfully! Found ${data.eventCount} upcoming event(s).`, true);
+          icalInput.value = '';
+          calNameInput.value = '';
+          await loadCalendar();
+        } else {
+          showToast(`Error: ${data.error || 'Failed to connect calendar'}`, false);
+        }
+      } catch (err) {
+        console.error('Save calendar error:', err);
+        showToast('Network error while connecting calendar.', false);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '➕ Add Calendar';
+      }
+    }
+
+    async function unlinkCalendar() {
+      const unlinkBtn = document.getElementById('unlinkBtn');
+      
+      // Iframe-safe two-step confirmation (never blocks on window.confirm)
+      if (!unlinkConfirmActive) {
+        unlinkConfirmActive = true;
+        unlinkBtn.textContent = '⚠️ Click Again to Confirm';
+        if (unlinkConfirmTimer) clearTimeout(unlinkConfirmTimer);
+        unlinkConfirmTimer = setTimeout(() => {
+          unlinkConfirmActive = false;
+          unlinkBtn.textContent = 'Unlink All';
+        }, 4000);
+        return;
+      }
+
+      unlinkConfirmActive = false;
+      if (unlinkConfirmTimer) clearTimeout(unlinkConfirmTimer);
+      unlinkBtn.disabled = true;
+      unlinkBtn.textContent = 'Unlinking...';
+
+      try {
+        const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/calendar`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('All calendars unlinked successfully.', true);
+          await loadCalendar();
+        } else {
+          showToast('Failed to unlink calendars.', false);
+        }
+      } catch (err) {
+        console.error('Unlink error:', err);
+        showToast('Network error while unlinking calendars.', false);
+      } finally {
+        unlinkBtn.disabled = false;
+        unlinkBtn.textContent = 'Unlink All';
+      }
+    }
+
+    async function testReminder() {
+      const testBtn = document.getElementById('testBtn');
+      if (testBtn) {
+        testBtn.disabled = true;
+        testBtn.textContent = '🔔 Sending...';
+      }
+      showToast('Sending test DM notification...', true);
+
+      try {
+        const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/test`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('✅ DM sent! Check your Discord direct messages.', true);
+        } else {
+          showToast('⚠️ DM failed. Make sure your Discord user privacy allows DMs.', false);
+        }
+      } catch (err) {
+        console.error('Test notification error:', err);
+        showToast('Error sending test notification.', false);
+      } finally {
+        if (testBtn) {
+          testBtn.disabled = false;
+          testBtn.textContent = '🔔 Test DM';
+        }
+      }
+    }
+
+    function reloadForUser() {
+      const input = document.getElementById('customUserId');
+      const val = input.value.trim();
+      if (val) {
+        currentUserId = val;
+        loadCalendar(true);
+      }
+    }
+
+    function renderEvents(events) {
+      const container = document.getElementById('eventsList');
+      if (!events || events.length === 0) {
+        container.innerHTML = `
+          <div style="color: var(--text-muted); font-size: 0.85rem; padding: 12px 0;">
+            No upcoming events found in the next 7 days.
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = events.slice(0, 10).map(ev => {
+        const start = new Date(ev.start);
+        const end = new Date(ev.end);
+        const timeStr = ev.isAllDay
+          ? start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' (All Day)'
+          : `${start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+        const calBadge = ev.calendarName
+          ? `<span style="font-size: 0.72rem; background: rgba(88,101,242,0.15); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 8px;">${escapeHtml(ev.calendarName)}</span>`
+          : '';
+
+        return `
+          <div class="event-item">
+            <div class="event-title">${escapeHtml(ev.title)}${calBadge}</div>
+            <div class="event-meta">
+              <span>⏰ ${timeStr}</span>
+              ${ev.location ? `<span>📍 ${escapeHtml(ev.location)}</span>` : ''}
+            </div>
+            ${ev.description ? `<div style="font-size: 0.8rem; color: var(--text-normal); margin-top: 6px; line-height: 1.4;">${escapeHtml(ev.description)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Attach all event listeners to DOM
+    function initEvents() {
+      // Buttons
+      document.getElementById('saveBtn')?.addEventListener('click', saveCalendar);
+      document.getElementById('unlinkBtn')?.addEventListener('click', unlinkCalendar);
+      document.getElementById('testBtn')?.addEventListener('click', testReminder);
+      document.getElementById('refreshBtn')?.addEventListener('click', () => loadCalendar(true));
+      document.getElementById('switchUserBtn')?.addEventListener('click', reloadForUser);
+
+      // Delegated click listener for dynamic Remove buttons
+      const connectedList = document.getElementById('connectedList');
+      if (connectedList) {
+        connectedList.addEventListener('click', (e) => {
+          const btn = e.target.closest('.btn-remove-cal');
+          if (btn) {
+            const calId = btn.getAttribute('data-cal-id');
+            if (calId) {
+              unlinkSingleCalendar(calId, btn);
+            }
+          }
+        });
+      }
+
+      // Enter key shortcuts
+      document.getElementById('customUserId')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') reloadForUser();
+      });
+      document.getElementById('icalInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveCalendar();
+      });
+
+      // Lead time dropdown change listener
+      document.getElementById('leadMinutes')?.addEventListener('change', async (e) => {
+        const reminderMinutes = parseInt(e.target.value, 10);
+        try {
+          const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reminderMinutes })
+          });
+          if (res.ok) {
+            showToast(`Alert timing updated to ${reminderMinutes} minutes before start!`, true);
+          } else {
+            showToast('Failed to update alert timing.', false);
+          }
+        } catch (err) {
+          showToast('Failed to update alert timing.', false);
+        }
+      });
+    }
+
+    // Discord Embedded App SDK background initialization
+    async function initDiscord() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const frameId = urlParams.get('frame_id');
+        const isInsideDiscord = Boolean(frameId || (window.parent && window.parent !== window));
+
+        if (!isInsideDiscord) {
+          return;
+        }
+
+        // Hide dev switcher when running inside Discord Activity
+        const devBar = document.getElementById('devBar');
+        if (devBar) devBar.style.display = 'none';
+
+        // Resolve Client ID
+        let clientId = urlParams.get('client_id');
+        if (!clientId) {
+          try {
+            const cfgRes = await fetch('/api/config');
+            const cfgData = await cfgRes.json();
+            clientId = cfgData.clientId;
+          } catch (e) {}
+        }
+        clientId = clientId || '1562608613770403991';
+
+        // Try auth with a 4s timeout so UI never hangs
+        const authTask = (async () => {
+          const { DiscordSDK } = await import('https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@1.1.0/+esm');
+          const discordSdk = new DiscordSDK(clientId);
+          await discordSdk.ready();
+
+          const { code } = await discordSdk.commands.authorize({
+            client_id: clientId,
+            response_type: 'code',
+            state: '',
+            prompt: 'none',
+            scope: ['identify']
+          });
+
+          const res = await fetch('/api/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+          });
+
+          const data = await res.json();
+          return data.user?.id || null;
+        })();
+
+        const timeoutTask = new Promise((resolve) => setTimeout(() => resolve(null), 4000));
+        const authenticatedUserId = await Promise.race([authTask, timeoutTask]);
+
+        if (authenticatedUserId && authenticatedUserId !== currentUserId) {
+          currentUserId = authenticatedUserId;
+          const userField = document.getElementById('customUserId');
+          if (userField) userField.value = authenticatedUserId;
+          await loadCalendar();
+        }
+      } catch (err) {
+        console.log('Discord SDK auth fallback:', err);
+      }
+    }
+
+    // Expose functions globally for debugging/console access if ever needed
+    window.loadCalendar = loadCalendar;
+    window.unlinkSingleCalendar = unlinkSingleCalendar;
+    window.saveCalendar = saveCalendar;
+    window.unlinkCalendar = unlinkCalendar;
+    window.testReminder = testReminder;
+    window.reloadForUser = reloadForUser;
+
+    // Initialize immediately
+    initEvents();
+    loadCalendar();
+    initDiscord();
+  </script>
+</body>
+</html>
