@@ -221,14 +221,12 @@ export class ReminderEngine {
       const discordUser = await this.client.users.fetch(userId);
       if (!discordUser) return false;
 
-      // 1. Calculate the start and end of today
+      // 1. Calculate the start and end of today in user's timezone
       const tz = user.timezone || "America/Toronto";
       const now = new Date();
-
-      const startOfToday = new Date(now);
-      startOfToday.setHours(0, 0, 0, 0);
-      const endOfToday = new Date(now);
-      endOfToday.setHours(23, 59, 59, 999);
+      const todayRange = CalendarSyncService.getTimezoneDayRange(now, 0, tz);
+      const startOfToday = todayRange.start;
+      const endOfToday = todayRange.end;
       // 2. Fetch all events and filter for today only
       const allEvents = await this.getUserEvents(user, true);
       const todayEvents = allEvents

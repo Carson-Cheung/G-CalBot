@@ -162,4 +162,37 @@ export class CalendarSyncService {
     merged.sort((a, b) => a.start.getTime() - b.start.getTime());
     return merged;
   }
+
+  /**
+   * Returns timezone-accurate start and end Date objects for a user's day range.
+   * Prevents UTC servers (like Render) from truncating events after 8:00 PM local time.
+   */
+  public static getTimezoneDayRange(
+    baseDate: Date,
+    daysOffset: number = 0,
+    tz: string = 'America/Toronto'
+  ): { start: Date; end: Date } {
+    try {
+      const dateStr = baseDate.toLocaleDateString('en-CA', { timeZone: tz });
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const targetMidnight = new Date(Date.UTC(y, m - 1, d + daysOffset, 12, 0, 0));
+      const targetDateStr = targetMidnight.toLocaleDateString('en-CA', { timeZone: 'UTC' });
+
+      const startStr = `${targetDateStr}T00:00:00`;
+      const endStr = `${targetDateStr}T23:59:59.999`;
+
+      const tzDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
+      const offsetDiff = new Date().getTime() - tzDate.getTime();
+
+      return {
+        start: new Date(new Date(startStr).getTime() + offsetDiff),
+        end: new Date(new Date(endStr).getTime() + offsetDiff),
+      };
+    } catch {
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + daysOffset);
+      d.setHours(23, 59, 59, 999);
+      return { start: new Date(baseDate), end: d };
+    }
+  }
 }

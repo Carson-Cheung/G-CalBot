@@ -460,36 +460,33 @@ export const calendarCommand = {
         });
       }
       await interaction.deferReply({ ephemeral: false });
+      const tz = user.timezone || "America/Toronto";
       const until = (interaction.options.getString("until") || "3d")
         .toLowerCase()
         .trim();
       const now = new Date();
-      let cutoff = new Date();
+      let cutoff: Date;
       let timeLabel = "Next 3 Days";
 
       if (until === "tdy" || until === "today") {
-        cutoff.setHours(23, 59, 59, 999);
+        cutoff = CalendarSyncService.getTimezoneDayRange(now, 0, tz).end;
         timeLabel = "Rest of today";
       } else if (until === "tmr" || until === "tomorrow") {
-        cutoff.setDate(cutoff.getDate() + 1);
-        cutoff.setHours(23, 59, 59, 999);
+        cutoff = CalendarSyncService.getTimezoneDayRange(now, 1, tz).end;
         timeLabel = "Tomorrow";
       } else if (until.match(/^(\d+)\s*w/)) {
-        //regex pattern matching (looks for 'w') ^
+        // regex pattern matching (looks for 'w') ^
         const weeks = parseInt(until.match(/^(\d+)/)![1], 10);
-        cutoff.setDate(cutoff.getDate() + weeks * 7); //* 7 for weeks
-        cutoff.setHours(23, 59, 59, 999);
+        cutoff = CalendarSyncService.getTimezoneDayRange(now, weeks * 7, tz).end;
         timeLabel = "Next " + weeks + " week(s)";
       } else if (until.match(/^(\d+)\s*d/)) {
-        //regex pattern matching (looks for 'd') ^
+        // regex pattern matching (looks for 'd') ^
         const days = parseInt(until.match(/^(\d+)/)![1], 10);
-        cutoff.setDate(cutoff.getDate() + days);
-        cutoff.setHours(23, 59, 59, 999);
+        cutoff = CalendarSyncService.getTimezoneDayRange(now, days, tz).end;
         timeLabel = "Next " + days + " day(s)";
       } else {
-        //edge case where user puts random stuff
-        cutoff.setDate(cutoff.getDate() + 3);
-        cutoff.setHours(23, 59, 59, 999);
+        // edge case where user puts random stuff
+        cutoff = CalendarSyncService.getTimezoneDayRange(now, 3, tz).end;
         timeLabel = "Next 3 days";
       }
 
