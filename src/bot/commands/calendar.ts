@@ -154,7 +154,8 @@ export const calendarCommand = {
         .setTitle("📖 How to get your Google Calendar Secret iCal Link")
         .setDescription(
           "Your link is completely private. Only the bot reads it to schedule your reminders.\n" +
-            "No other Discord members or server admins will ever see your email or calendar.",
+            "No other Discord members or server admins will ever see your email or private calendar URL.\n\n" +
+            "⚠️ **Disclaimer:** Information contained within calendar entries (such as event titles, descriptions, and locations) can be visible in Discord reminders, embeds, and whenever you share your schedule with `/cal share`. Please avoid storing sensitive personal credentials or secrets in event fields.",
         )
         .addFields(
           {
@@ -243,7 +244,8 @@ export const calendarCommand = {
             `Connected **${linked.name}**!\n` +
               `Found **${events.length} event(s)** in this calendar for the next 7 days.\n` +
               `You now have **${user.calendars.length} connected calendar(s)**.\n` +
-              `Reminders will be sent **${user.reminderMinutes} minutes** before each event.`,
+              `Reminders will be sent **${user.reminderMinutes} minutes** before each event.\n\n` +
+              `⚠️ *Disclaimer: Data in calendar entries (event titles, descriptions, and locations) can be visible in Discord reminders and shared schedules.*`,
           );
 
         if (events.length > 0) {
@@ -477,7 +479,11 @@ export const calendarCommand = {
       } else if (until.match(/^(\d+)\s*w/)) {
         // regex pattern matching (looks for 'w') ^
         const weeks = parseInt(until.match(/^(\d+)/)![1], 10);
-        cutoff = CalendarSyncService.getTimezoneDayRange(now, weeks * 7, tz).end;
+        cutoff = CalendarSyncService.getTimezoneDayRange(
+          now,
+          weeks * 7,
+          tz,
+        ).end;
         timeLabel = "Next " + weeks + " week(s)";
       } else if (until.match(/^(\d+)\s*d/)) {
         // regex pattern matching (looks for 'd') ^
@@ -532,7 +538,7 @@ export const calendarCommand = {
       }
 
       embed.setFooter({
-        text: "🔒 Privacy protected: Email and private calendar feeds are never shared.",
+        text: "🔒 Privacy protected: Email & private feed URLs are never shared. ⚠️ Disclaimer: Entry details (titles, times, locations) are visible in this channel.",
       });
 
       return interaction.editReply({ embeds: [embed] });
