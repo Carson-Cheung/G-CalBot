@@ -27,7 +27,7 @@ Built as a hybrid system:
 ## ✨ Features
 
 - **🛡️ Privacy Protected**  
-  Uses Google Calendar's **Secret iCal Address**. All linking commands and web dashboards are private/ephemeral — your Gmail address and secret URLs are never shared with other server members. *(Disclaimer: Information in calendar entries like event titles, locations, and descriptions can be visible in alerts or shared schedules).*
+  Uses Google Calendar's **Secret iCal Address**. All linking commands and web dashboards are private/ephemeral — your Gmail address and secret URLs are never shared with other server members. *(Disclaimer: Information in calendar entries like event titles, locations, and descriptions can be visible in Discord embeds — keep this in mind when using public commands like `/cal share`).*
 - **🔄 Multi-Calendar Support**  
   Link multiple schedules simultaneously (e.g., Primary Google Calendar, university D2L/Canvas feeds, clubs, or work). Events are merged and tagged automatically.
 - **📢 Public Schedule Sharing (`/cal share`)**  
@@ -147,4 +147,4 @@ G-CalBot/
 - **Zero Credential Sharing**: We never ask for your Google account password or full OAuth permissions.
 - **Ephemerality**: Calendar links and raw schedule queries are ephemeral and visible only to you.
 - **Data Isolation**: Multi-calendar tokens and private `.ics` URLs are stored locally on the server in atomic JSON storage (`data/database.json`), strictly excluded from source control.
-- **Calendar Entry Visibility Disclaimer**: While calendar feed URLs and user emails remain strictly private, data contained within calendar entries (such as event titles, descriptions, and locations) can be visible in reminder messages, embeds, and whenever you share your schedule via `/cal share`. Avoid storing sensitive credentials or secrets in calendar event fields.
+- **Calendar Entry Visibility Disclaimer**: While calendar feed URLs and user emails remain strictly private, data contained within calendar entries (such as event titles, descriptions, and locations) can be displayed in Discord. Keep this in mind when using public commands like `/cal share`.

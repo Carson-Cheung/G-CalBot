@@ -155,7 +155,7 @@ export const calendarCommand = {
         .setDescription(
           "Your link is completely private. Only the bot reads it to schedule your reminders.\n" +
             "No other Discord members or server admins will ever see your email or private calendar URL.\n\n" +
-            "⚠️ **Disclaimer:** Information contained within calendar entries (such as event titles, descriptions, and locations) can be visible in Discord reminders, embeds, and whenever you share your schedule with `/cal share`. Please avoid storing sensitive personal credentials or secrets in event fields.",
+            "⚠️ **Disclaimer:** Information contained within calendar entries (such as event titles, descriptions, and locations) can be visible in Discord reminders and embeds—please keep this in mind when using public commands like `/cal share`.",
         )
         .addFields(
           {
@@ -245,7 +245,7 @@ export const calendarCommand = {
               `Found **${events.length} event(s)** in this calendar for the next 7 days.\n` +
               `You now have **${user.calendars.length} connected calendar(s)**.\n` +
               `Reminders will be sent **${user.reminderMinutes} minutes** before each event.\n\n` +
-              `⚠️ *Disclaimer: Data in calendar entries (event titles, descriptions, and locations) can be visible in Discord reminders and shared schedules.*`,
+              `⚠️ *Disclaimer: Data in calendar entries (event titles, descriptions, and locations) can be visible in Discord—please keep this in mind when using public commands like \`/cal share\`.*`,
           );
 
         if (events.length > 0) {
@@ -538,7 +538,7 @@ export const calendarCommand = {
       }
 
       embed.setFooter({
-        text: "🔒 Privacy protected: Email & private feed URLs are never shared. ⚠️ Disclaimer: Entry details (titles, times, locations) are visible in this channel.",
+        text: "🔒 Privacy protected: Email & feed URLs are never shared. ⚠️ Keep in mind that calendar entry details (titles, times, locations) are visible to everyone in this channel.",
       });
 
       return interaction.editReply({ embeds: [embed] });
