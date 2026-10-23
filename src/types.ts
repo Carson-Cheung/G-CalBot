@@ -12,6 +12,9 @@ export interface UserCalendarConfig {
   reminderMinutes: number; // e.g. 10 (minutes before start)
   enabled: boolean;
   timezone?: string;
+  dailyDigestEnabled?: boolean;
+  dailyDigestTime?: string;
+  lastDailyDigestDate?: string;
   createdAt: string;
   updatedAt: string;
 }

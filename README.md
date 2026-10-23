@@ -49,6 +49,7 @@ All commands feature short convenience aliases for quick typing:
 | :--- | :--- | :--- | :--- |
 | `/calendar link <url> [name]` | `/cal link` | Privately connects a Google Calendar or course `.ics` feed with a custom label. | Private |
 | `/calendar share [until]` | `/cal share` | Posts upcoming schedule in chat (`tdy`, `tmr`, `3d`, `1w`, or custom number of days/weeks). | **Public** |
+| `/calendar daily [time] [enabled]` | `/cal daily` | Configures daily morning schedule digest to DMs at a chosen time (e.g. `08:00`). | Private |
 | `/calendar view` | `/cal view` | Displays merged upcoming events from all your calendars with direct calendar links. | Private |
 | `/calendar list` | `/cal list` | Lists all your connected calendars with their unique IDs and added dates. | Private |
 | `/calendar unlink [calendar]` | `/cal unlink` | Disconnects a specific calendar by name/ID, or unlinks all feeds. | Private |

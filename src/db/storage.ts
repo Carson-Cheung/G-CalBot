@@ -57,13 +57,45 @@ class Storage {
     } else {
       this.persist();
     }
+
+    // Auto-restore / merge from DATABASE_BACKUP environment variable
+    if (process.env.DATABASE_BACKUP) {
+      try {
+        const backupRaw = process.env.DATABASE_BACKUP.trim();
+        const parsedBackup = JSON.parse(backupRaw);
+        const backupUsers: Record<string, UserCalendarConfig> = parsedBackup.users || (typeof parsedBackup === 'object' ? parsedBackup : {});
+        let restoredCount = 0;
+
+        for (const [userId, uConfig] of Object.entries(backupUsers)) {
+          if (!this.data.users[userId]) {
+            this.data.users[userId] = uConfig;
+            restoredCount++;
+          }
+        }
+
+        if (parsedBackup.sentReminders) {
+          this.data.sentReminders = { ...parsedBackup.sentReminders, ...this.data.sentReminders };
+        }
+
+        if (restoredCount > 0) {
+          console.log(`✅ Restored/Merged ${restoredCount} user(s) from DATABASE_BACKUP environment variable! (Total: ${Object.keys(this.data.users).length})`);
+          this.persist();
+        }
+      } catch (bErr) {
+        console.error('Failed to parse DATABASE_BACKUP environment variable:', bErr);
+      }
+    }
   }
 
   private persist() {
     try {
       const tempPath = `${this.filePath}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
+      const jsonStr = JSON.stringify(this.data, null, 2);
+      fs.writeFileSync(tempPath, jsonStr, 'utf-8');
       fs.renameSync(tempPath, this.filePath);
+      if (Object.keys(this.data.users).length > 0) {
+        console.log(`💾 Saved database (${Object.keys(this.data.users).length} users)`);
+      }
     } catch (err) {
       console.error('Failed to persist database:', err);
     }

@@ -99,6 +99,41 @@ function buildCalendarCommand(name: string) {
             .setDescription("e.g. tdy, tmr, 3d, 5d, 2w")
             .setRequired(false),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("daily")
+        .setDescription(
+          "Configure a daily morning briefing of all your tasks for today",
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("time")
+            .setDescription("Time to send your daily digest (e.g. 08:30)")
+            .setRequired(false),
+        )
+        .addBooleanOption((opt) =>
+          opt
+            .setName("enabled")
+            .setDescription("Turn your daily morning digest on or off")
+            .setRequired(false),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("timezone")
+            .setDescription(
+              "Your timezone (e.g. America/Toronto, EST, PST, UTC)",
+            )
+            .setRequired(false),
+        )
+        .addBooleanOption((opt) =>
+          opt
+            .setName("test")
+            .setDescription(
+              "Send today's daily briefing to your DMs right now to test",
+            )
+            .setRequired(false),
+        ),
     );
 }
 
@@ -504,6 +539,70 @@ export const calendarCommand = {
       });
 
       return interaction.editReply({ embeds: [embed] });
+    }
+    if (subcommand === "daily") {
+      const user = storage.getUser(userId);
+      if (!user || (!user.calendars.length && !user.icalUrl)) {
+        return interaction.reply({
+          content:
+            "⚠️ You haven't linked a calendar yet! Use `/cal link` first.",
+          ephemeral: true,
+        });
+      }
+      await interaction.deferReply({ ephemeral: true });
+      const timeInput = interaction.options.getString("time");
+      const enabledInput = interaction.options.getBoolean("enabled");
+      const tzInput = interaction.options.getString("timezone");
+      const runTest = interaction.options.getBoolean("test");
+      let updated = false;
+      // 1. If user passed a time, validate it (e.g. "8:30" or "08:30")
+      if (timeInput) {
+        const timeMatch = timeInput.match(/^(\d{1,2}):(\d{2})$/);
+        if (timeMatch) {
+          const hh = timeMatch[1].padStart(2, "0");
+          const mm = timeMatch[2];
+          user.dailyDigestTime = `${hh}:${mm}`;
+          user.dailyDigestEnabled = true;
+          updated = true;
+        } else {
+          return interaction.editReply({
+            content:
+              "⚠️ Please enter a valid 24-hour time in `HH:mm` format (e.g. `08:00` or `09:30`).",
+          });
+        }
+      }
+      // 2. If user toggled enabled/disabled
+      if (enabledInput !== null) {
+        user.dailyDigestEnabled = enabledInput;
+        updated = true;
+      }
+      // 3. If user provided timezone
+      if (tzInput) {
+        user.timezone = tzInput;
+        updated = true;
+      }
+      if (updated) {
+        user.updatedAt = new Date().toISOString();
+        storage.saveUser(user);
+      }
+      // 4. If user asked for an immediate test preview
+      if (runTest) {
+        const sent = await reminderEngine.sendDailyDigest(userId, true);
+        if (sent) {
+          return interaction.editReply({
+            content: `📬 **Test daily briefing sent to your DMs!**\n\n⚙️ **Current Settings:**\n• Daily Digest: ${user.dailyDigestEnabled ? "✅ Active" : "❌ Disabled"}\n• Delivery Time: \`${user.dailyDigestTime || "08:00"}\`\n• Timezone: \`${user.timezone || "America/Toronto"}\``,
+          });
+        } else {
+          return interaction.editReply({
+            content:
+              "⚠️ Failed to send test DM. Make sure your Discord privacy settings allow DMs from server members.",
+          });
+        }
+      }
+      // 5. Show current status summary
+      return interaction.editReply({
+        content: `⚙️ **Daily Schedule Briefing Settings:**\n\n• Status: ${user.dailyDigestEnabled ? "✅ **Active**" : "❌ **Disabled**"}\n• Delivery Time: \`${user.dailyDigestTime || "08:00"}\` every morning\n• Timezone: \`${user.timezone || "America/Toronto"}\`\n\n*Tip: Run \`/cal daily test: True\` to preview today's briefing in your DMs right now!*`,
+      });
     }
   },
 };
