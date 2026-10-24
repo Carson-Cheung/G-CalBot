@@ -1,6 +1,13 @@
+import { ChatInputCommandInteraction } from 'discord.js';
+import { ReminderEngine } from '../../calendar/reminderEngine';
 import { calendarCommand, calCommand } from './calendar';
 import { activityCommand, actCommand } from './activity';
 import { openCommand, oCommand } from './open';
+
+export interface BotCommand {
+  data: any;
+  execute?: (interaction: ChatInputCommandInteraction, reminderEngine: ReminderEngine) => Promise<any>;
+}
 
 // Discord Activity Primary Entry Point (required by Discord when Activities are enabled)
 export const entryPointCommand = {
@@ -24,7 +31,7 @@ export const entryPointCommand = {
   },
 };
 
-export const allCommands = [
+export const allCommands: BotCommand[] = [
   calendarCommand,
   calCommand,
   activityCommand,
@@ -35,8 +42,8 @@ export const allCommands = [
 ];
 
 // Fast lookup Map: commandName -> command object
-export const commandsMap = new Map<string, any>(
+export const commandsMap = new Map<string, BotCommand>(
   allCommands
-    .filter(cmd => (cmd as any).execute)
+    .filter((cmd): cmd is BotCommand & { execute: NonNullable<BotCommand['execute']> } => typeof cmd.execute === 'function')
     .map((cmd) => [cmd.data.name, cmd])
 );

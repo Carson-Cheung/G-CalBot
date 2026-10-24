@@ -9,7 +9,7 @@ async function bootstrap() {
   const server = createServer(reminderEngine);
 
   // Start HTTP Server for Discord Activity & Web API
-  server.listen(config.port, () => {
+  const httpServer = server.listen(config.port, () => {
     console.log(
       `🌐 Web & Activity server listening at http://localhost:${config.port}`,
     );
@@ -32,15 +32,16 @@ async function bootstrap() {
   }
 
   // Graceful shutdown
-  const shutdown = () => {
+  const shutdown = async () => {
     console.log("Stopping bot and services...");
     reminderEngine.stop();
-    client.destroy();
+    httpServer.close();
+    await client.destroy();
     process.exit(0);
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }
 
 bootstrap().catch((err) => {

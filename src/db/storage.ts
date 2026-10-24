@@ -51,7 +51,10 @@ class Storage {
           }
         }
       } catch (err) {
-        console.error('Failed to parse database file, resetting to empty data:', err);
+        console.error('Failed to parse database file, preserving backup:', err);
+        try {
+          fs.copyFileSync(this.filePath, `${this.filePath}.corrupt.${Date.now()}`);
+        } catch {}
         this.persist();
       }
     } else {
@@ -63,28 +66,62 @@ class Storage {
       try {
         const backupRaw = process.env.DATABASE_BACKUP.trim();
         const parsedBackup = JSON.parse(backupRaw);
-        const backupUsers: Record<string, UserCalendarConfig> = parsedBackup.users || (typeof parsedBackup === 'object' ? parsedBackup : {});
-        let restoredCount = 0;
+        if (parsedBackup && typeof parsedBackup === 'object') {
+          const backupUsers: Record<string, UserCalendarConfig> = parsedBackup.users || parsedBackup;
+          let restoredCount = 0;
 
-        for (const [userId, uConfig] of Object.entries(backupUsers)) {
-          if (!this.data.users[userId]) {
-            this.data.users[userId] = uConfig;
-            restoredCount++;
+          for (const [userId, uConfig] of Object.entries(backupUsers)) {
+            if (!this.data.users[userId]) {
+              this.data.users[userId] = uConfig;
+              restoredCount++;
+            }
           }
-        }
 
-        if (parsedBackup.sentReminders) {
-          this.data.sentReminders = { ...parsedBackup.sentReminders, ...this.data.sentReminders };
-        }
+          if (parsedBackup.sentReminders) {
+            this.data.sentReminders = { ...parsedBackup.sentReminders, ...this.data.sentReminders };
+          }
 
-        if (restoredCount > 0) {
-          console.log(`✅ Restored/Merged ${restoredCount} user(s) from DATABASE_BACKUP environment variable! (Total: ${Object.keys(this.data.users).length})`);
-          this.persist();
+          if (restoredCount > 0) {
+            console.log(`✅ Restored/Merged ${restoredCount} user(s) from DATABASE_BACKUP environment variable! (Total: ${Object.keys(this.data.users).length})`);
+            this.persist();
+          }
         }
       } catch (bErr) {
         console.error('Failed to parse DATABASE_BACKUP environment variable:', bErr);
       }
     }
+
+    // Auto-seed from committed seedData.json if users are missing (preserves data on Render restarts)
+    const seedPath = path.resolve(process.cwd(), 'src', 'db', 'seedData.json');
+    if (fs.existsSync(seedPath)) {
+      try {
+        const seedRaw = fs.readFileSync(seedPath, 'utf-8');
+        const seedParsed = JSON.parse(seedRaw);
+        const seedUsers: Record<string, UserCalendarConfig> = seedParsed.users || seedParsed;
+        let seededCount = 0;
+
+        for (const [userId, uConfig] of Object.entries(seedUsers)) {
+          if (!this.data.users[userId]) {
+            this.data.users[userId] = uConfig;
+            seededCount++;
+          }
+        }
+
+        if (seededCount > 0) {
+          console.log(`🌱 Auto-restored ${seededCount} user(s) from seedData.json! (Total: ${Object.keys(this.data.users).length})`);
+          this.persist();
+        }
+      } catch (sErr) {
+        console.error('Failed to load seedData.json fallback:', sErr);
+      }
+    }
+  }
+
+  public getBackup(): DatabaseSchema {
+    return {
+      users: { ...this.data.users },
+      sentReminders: { ...this.data.sentReminders }
+    };
   }
 
   private persist() {
@@ -176,7 +213,7 @@ class Storage {
 
     // Check if URL already exists
     const existingIndex = user.calendars.findIndex(c => c.url === url);
-    const calendarId = `cal_${Date.now()}`;
+    const calendarId = `cal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newCal: LinkedCalendar = {
       id: calendarId,
       name: name || `Calendar ${user.calendars.length + 1}`,

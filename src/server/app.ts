@@ -14,13 +14,18 @@ export function createServer(reminderEngine: ReminderEngine) {
   app.use(express.json());
 
   // Health check
-  app.get('/api/health', (req: Request, res: Response) => {
+  app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
 
   // App public config
-  app.get('/api/config', (req: Request, res: Response) => {
+  app.get('/api/config', (_req: Request, res: Response) => {
     res.json({ clientId: config.clientId });
+  });
+
+  // Export database backup for hosting persistence
+  app.get('/api/backup', (_req: Request, res: Response) => {
+    res.json(storage.getBackup());
   });
 
   // Discord Activity OAuth2 token exchange
@@ -67,18 +72,25 @@ export function createServer(reminderEngine: ReminderEngine) {
     }
   });
 
-  function resolveUserId(rawUserId: string): string {
+  function resolveUserId(rawUserId: string): string | null {
     if (rawUserId && rawUserId !== 'demo-user' && rawUserId !== 'undefined' && rawUserId !== 'null') {
-      return rawUserId;
+      return rawUserId.trim();
     }
-    const all = storage.getAllUsers();
-    if (all.length > 0) return all[0].userId;
-    return 'demo-user';
+    return null;
   }
 
   // Get user calendar status and upcoming events
   app.get('/api/user/:userId/calendar', async (req: Request, res: Response) => {
     const userId = resolveUserId(String(req.params.userId));
+    if (!userId) {
+      return res.json({
+        linked: false,
+        reminderMinutes: 10,
+        calendars: [],
+        events: []
+      });
+    }
+
     let user = storage.getUser(userId);
 
     if (!user) {
@@ -117,6 +129,9 @@ export function createServer(reminderEngine: ReminderEngine) {
   // Link calendar via iCal URL
   app.post('/api/user/:userId/calendar', async (req: Request, res: Response) => {
     const userId = resolveUserId(String(req.params.userId));
+    if (!userId) {
+      return res.status(400).json({ error: 'A valid Discord user ID is required to link calendars.' });
+    }
     const { icalUrl, name, reminderMinutes } = req.body;
 
     if (!icalUrl || typeof icalUrl !== 'string') {
@@ -161,6 +176,9 @@ export function createServer(reminderEngine: ReminderEngine) {
   // Unlink calendar
   app.delete('/api/user/:userId/calendar', (req: Request, res: Response) => {
     const userId = resolveUserId(String(req.params.userId));
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
     const calendarId = req.query.calendarId ? String(req.query.calendarId) : undefined;
 
     let removed = false;
@@ -177,7 +195,10 @@ export function createServer(reminderEngine: ReminderEngine) {
   // Update reminder settings
   app.patch('/api/user/:userId/settings', (req: Request, res: Response) => {
     const userId = resolveUserId(String(req.params.userId));
-    const { reminderMinutes, enabled } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+    const { reminderMinutes, enabled, timezone, dailyDigestEnabled, dailyDigestTime } = req.body;
     const user = storage.getUser(userId);
 
     if (!user) {
@@ -190,6 +211,24 @@ export function createServer(reminderEngine: ReminderEngine) {
     if (enabled !== undefined) {
       user.enabled = Boolean(enabled);
     }
+    if (timezone !== undefined && typeof timezone === 'string') {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: timezone });
+        user.timezone = timezone;
+      } catch {
+        return res.status(400).json({ error: 'Invalid IANA timezone' });
+      }
+    }
+    if (dailyDigestEnabled !== undefined) {
+      user.dailyDigestEnabled = Boolean(dailyDigestEnabled);
+    }
+    if (dailyDigestTime !== undefined && typeof dailyDigestTime === 'string') {
+      if (/^([01]?\d|2[0-3]):([0-5]\d)$/.test(dailyDigestTime)) {
+        user.dailyDigestTime = dailyDigestTime;
+      } else {
+        return res.status(400).json({ error: 'dailyDigestTime must be in HH:mm 24-hour format' });
+      }
+    }
     user.updatedAt = new Date().toISOString();
 
     storage.saveUser(user);
@@ -199,6 +238,9 @@ export function createServer(reminderEngine: ReminderEngine) {
   // Send a test reminder DM
   app.post('/api/user/:userId/test', async (req: Request, res: Response) => {
     const userId = resolveUserId(String(req.params.userId));
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
     const testEvent = {
       id: `test_${Date.now()}`,
       title: '🎉 Google Calendar Reminder Test',
@@ -220,7 +262,7 @@ export function createServer(reminderEngine: ReminderEngine) {
   }
 
   // Fallback to index.html for single-page app
-  app.use((req: Request, res: Response) => {
+  app.use((_req: Request, res: Response) => {
     const indexPath = path.resolve(publicDir, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);

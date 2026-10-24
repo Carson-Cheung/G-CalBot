@@ -1,4 +1,4 @@
-//constants for the command names and such
+// Constants for slash command identifiers
 
 export const COMMANDS = {
   CAL: "cal",
@@ -8,3 +8,5 @@ export const COMMANDS = {
   OPEN: "open",
   O: "o",
 } as const;
+
+export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

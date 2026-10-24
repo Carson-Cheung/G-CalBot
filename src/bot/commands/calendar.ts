@@ -327,7 +327,7 @@ export const calendarCommand = {
           });
         }
       } else {
-        storage.deleteUser(userId);
+        storage.removeCalendar(userId);
         reminderEngine.invalidateUserCache(userId);
         return interaction.reply({
           content:
@@ -395,7 +395,7 @@ export const calendarCommand = {
           const endUnix = Math.floor(ev.end.getTime() / 1000);
           const timeDisplay = ev.isAllDay
             ? `<t:${startUnix}:D> (All day)`
-            : `<t:${startUnix}:F> (<t:${startUnix}:R>)`;
+            : `<t:${startUnix}:F> to <t:${endUnix}:t> (<t:${startUnix}:R>)`;
 
           const calTag = ev.calendarName ? ` • *${ev.calendarName}*` : "";
 
@@ -469,34 +469,39 @@ export const calendarCommand = {
       const now = new Date();
       let cutoff: Date;
       let timeLabel = "Next 3 Days";
+      let windowDays = 7;
 
       if (until === "tdy" || until === "today") {
         cutoff = CalendarSyncService.getTimezoneDayRange(now, 0, tz).end;
         timeLabel = "Rest of today";
+        windowDays = 1;
       } else if (until === "tmr" || until === "tomorrow") {
         cutoff = CalendarSyncService.getTimezoneDayRange(now, 1, tz).end;
         timeLabel = "Tomorrow";
+        windowDays = 2;
       } else if (until.match(/^(\d+)\s*w/)) {
-        // regex pattern matching (looks for 'w') ^
         const weeks = parseInt(until.match(/^(\d+)/)![1], 10);
+        const cappedWeeks = Math.min(Math.max(weeks, 1), 8);
         cutoff = CalendarSyncService.getTimezoneDayRange(
           now,
-          weeks * 7,
+          cappedWeeks * 7,
           tz,
         ).end;
-        timeLabel = "Next " + weeks + " week(s)";
+        timeLabel = "Next " + cappedWeeks + " week(s)";
+        windowDays = cappedWeeks * 7;
       } else if (until.match(/^(\d+)\s*d/)) {
-        // regex pattern matching (looks for 'd') ^
         const days = parseInt(until.match(/^(\d+)/)![1], 10);
-        cutoff = CalendarSyncService.getTimezoneDayRange(now, days, tz).end;
-        timeLabel = "Next " + days + " day(s)";
+        const cappedDays = Math.min(Math.max(days, 1), 60);
+        cutoff = CalendarSyncService.getTimezoneDayRange(now, cappedDays, tz).end;
+        timeLabel = "Next " + cappedDays + " day(s)";
+        windowDays = cappedDays;
       } else {
-        // edge case where user puts random stuff
         cutoff = CalendarSyncService.getTimezoneDayRange(now, 3, tz).end;
         timeLabel = "Next 3 days";
+        windowDays = 3;
       }
 
-      const allEvents = await reminderEngine.getUserEvents(user, true);
+      const allEvents = await reminderEngine.getUserEvents(user, true, windowDays);
 
       // only keep events between time range
       const sharedEvents = allEvents.filter(
@@ -560,7 +565,7 @@ export const calendarCommand = {
       let updated = false;
       // 1. If user passed a time, validate it (e.g. "8:30" or "08:30")
       if (timeInput) {
-        const timeMatch = timeInput.match(/^(\d{1,2}):(\d{2})$/);
+        const timeMatch = timeInput.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
         if (timeMatch) {
           const hh = timeMatch[1].padStart(2, "0");
           const mm = timeMatch[2];
@@ -570,7 +575,7 @@ export const calendarCommand = {
         } else {
           return interaction.editReply({
             content:
-              "⚠️ Please enter a valid 24-hour time in `HH:mm` format (e.g. `08:00` or `09:30`).",
+              "⚠️ Please enter a valid 24-hour time between `00:00` and `23:59` (e.g. `08:00` or `14:30`).",
           });
         }
       }
@@ -581,8 +586,16 @@ export const calendarCommand = {
       }
       // 3. If user provided timezone
       if (tzInput) {
-        user.timezone = tzInput;
-        updated = true;
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: tzInput.trim() });
+          user.timezone = tzInput.trim();
+          updated = true;
+        } catch {
+          return interaction.editReply({
+            content:
+              "⚠️ Invalid timezone. Please enter a valid IANA timezone name (e.g. `America/New_York`, `America/Toronto`, `Europe/London`, `UTC`).",
+          });
+        }
       }
       if (updated) {
         user.updatedAt = new Date().toISOString();

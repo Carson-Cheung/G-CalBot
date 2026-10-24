@@ -1,0 +1,48 @@
+{
+  "users": {
+    "511733632713621518": {
+      "userId": "511733632713621518",
+      "reminderMinutes": 15,
+      "enabled": true,
+      "createdAt": "2026-10-22T00:07:24.215Z",
+      "updatedAt": "2026-10-23T01:40:26.114Z",
+      "calendars": [
+        {
+          "id": "cal_1792719479695",
+          "name": "tmu courses",
+          "url": "https://calendar.google.com/calendar/ical/carson.cheung%40torontomu.ca/private-e0b21a324cde5f2150d0183e493f990f/basic.ics",
+          "addedAt": "2026-10-23T01:37:59.694Z"
+        },
+        {
+          "id": "cal_1792719626114",
+          "name": "d2l notis",
+          "url": "https://courses.torontomu.ca/d2l/le/calendar/feed/user/feed.ics?token=aynnjcl61m6524r827019",
+          "addedAt": "2026-10-23T01:40:26.114Z"
+        }
+      ],
+      "icalUrl": "https://calendar.google.com/calendar/ical/carson.cheung%40torontomu.ca/private-e0b21a324cde5f2150d0183e493f990f/basic.ics"
+    },
+    "308742856523251714": {
+      "userId": "308742856523251714",
+      "reminderMinutes": 10,
+      "enabled": true,
+      "createdAt": "2026-10-23T01:47:46.486Z",
+      "updatedAt": "2026-10-23T01:49:51.441Z",
+      "calendars": [
+        {
+          "id": "cal_1792720066486",
+          "name": "Tmu Courses",
+          "url": "https://calendar.google.com/calendar/ical/bfranchi%40torontomu.ca/private-17a747aeb21ed397e45252e75a1a321a/basic.ics",
+          "addedAt": "2026-10-23T01:47:46.486Z"
+        },
+        {
+          "id": "cal_1792720191441",
+          "name": "D2l Notis",
+          "url": "https://courses.torontomu.ca/d2l/le/calendar/feed/user/feed.ics?token=a3pkune9temb38ed2701c",
+          "addedAt": "2026-10-23T01:49:51.441Z"
+        }
+      ],
+      "icalUrl": "https://calendar.google.com/calendar/ical/bfranchi%40torontomu.ca/private-17a747aeb21ed397e45252e75a1a321a/basic.ics"
+    }
+  }
+}
