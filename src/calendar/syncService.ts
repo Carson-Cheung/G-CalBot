@@ -23,8 +23,28 @@ export class CalendarSyncService {
   ): Promise<CalendarEvent[]> {
     const cleanUrl = this.sanitizeUrl(icalUrl);
 
-    // Fetch the raw iCalendar data
+    // Validate URL and prevent SSRF to internal/loopback addresses
+    try {
+      const parsedUrl = new URL(cleanUrl);
+      const host = parsedUrl.hostname.toLowerCase();
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host === '::1' ||
+        host === '169.254.169.254' ||
+        host.endsWith('.local') ||
+        host.endsWith('.internal')
+      ) {
+        throw new Error('Access to private or local network hosts is not permitted.');
+      }
+    } catch (urlErr: any) {
+      throw new Error(`Invalid calendar URL: ${urlErr.message}`);
+    }
+
+    // Fetch the raw iCalendar data with a 10-second timeout
     const response = await fetch(cleanUrl, {
+      signal: AbortSignal.timeout(10000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; DiscordGCalBot/1.0)'
       }

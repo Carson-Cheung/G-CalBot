@@ -1,4 +1,4 @@
-import { Client, Partials, REST, ActivityType } from "discord.js";
+import { Client, Partials, REST, ActivityType, Events } from "discord.js";
 import { GatewayIntentBits, Routes } from "discord-api-types/v10";
 import { config } from "../config";
 import { allCommands, commandsMap } from "./commands";
@@ -12,48 +12,23 @@ export function createBot() {
 
   const reminderEngine = new ReminderEngine(client);
 
-  client.once("clientReady", async () => {
+  client.once(Events.ClientReady, async () => {
     console.log(`🤖 Discord bot logged in as ${client.user?.tag}!`);
     client.user?.setActivity("/cal guide | 📅 Syncing", {
       type: ActivityType.Watching,
     });
     reminderEngine.start();
 
-    // Register slash commands globally AND per-guild for instant updates
+    // Register slash commands globally
     if (config.clientId && config.discordToken) {
       try {
         console.log("Registering application slash commands...");
         const rest = new REST({ version: "10" }).setToken(config.discordToken);
         const commands = allCommands.map((cmd) => cmd.data.toJSON());
 
-        // 1. Register globally
         await rest.put(Routes.applicationCommands(config.clientId), {
           body: commands,
         });
-
-        // 2. Also register directly to all joined servers for 0-second instant updates!
-        const guildCommands = allCommands
-          .filter((c) => (c.data as any).type !== 4)
-          .map((c) => c.data.toJSON());
-
-        for (const [guildId, guild] of client.guilds.cache) {
-          try {
-            await rest.put(
-              Routes.applicationGuildCommands(config.clientId, guildId),
-              {
-                body: guildCommands,
-              },
-            );
-            console.log(
-              `⚡ Instant commands registered to server: ${guild.name}`,
-            );
-          } catch (gErr) {
-            console.warn(
-              `Could not register commands to guild ${guild.name}:`,
-              gErr,
-            );
-          }
-        }
 
         console.log("✅ Application slash commands registered successfully!");
       } catch (err) {
@@ -67,7 +42,7 @@ export function createBot() {
   });
 
   // Dynamic Command Dispatcher - NO IF/ELSE STATEMENTS NEEDED!
-  client.on("interactionCreate", async (interaction) => {
+  client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     try {

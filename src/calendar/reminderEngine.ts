@@ -1,4 +1,5 @@
 import { Client, EmbedBuilder } from "discord.js";
+import { config } from "../config";
 import { storage } from "../db/storage";
 import { CalendarSyncService } from "./syncService";
 import { CalendarEvent, UserCalendarConfig } from "../types";
@@ -13,6 +14,7 @@ export class ReminderEngine {
   private cache: Map<string, CachedEvents> = new Map();
   private checkInterval: NodeJS.Timeout | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private isChecking = false;
 
   constructor(client: Client) {
     this.client = client;
@@ -46,12 +48,13 @@ export class ReminderEngine {
   public async getUserEvents(
     user: UserCalendarConfig,
     forceRefresh = false,
+    windowDays = 7,
   ): Promise<CalendarEvent[]> {
     const cached = this.cache.get(user.userId);
     const now = Date.now();
-    const cacheTtl = 5 * 60 * 1000; // 5 minutes
+    const cacheTtl = (config.syncIntervalMinutes || 5) * 60 * 1000;
 
-    if (!forceRefresh && cached && now - cached.lastFetched < cacheTtl) {
+    if (!forceRefresh && windowDays === 7 && cached && now - cached.lastFetched < cacheTtl) {
       return cached.events;
     }
 
@@ -73,12 +76,14 @@ export class ReminderEngine {
 
       const events = await CalendarSyncService.fetchMultipleCalendars(
         calendars,
-        7,
+        windowDays,
       );
-      this.cache.set(user.userId, {
-        lastFetched: now,
-        events,
-      });
+      if (windowDays === 7) {
+        this.cache.set(user.userId, {
+          lastFetched: now,
+          events,
+        });
+      }
       return events;
     } catch (err) {
       console.error(`Failed to fetch calendar for user ${user.userId}:`, err);
@@ -91,55 +96,60 @@ export class ReminderEngine {
   }
 
   private async checkReminders() {
-    if (!this.client.isReady()) return;
+    if (this.isChecking || !this.client.isReady()) return;
+    this.isChecking = true;
 
-    const users = storage.getAllUsers();
-    const now = Date.now();
+    try {
+      const users = storage.getAllUsers();
+      const now = Date.now();
 
-    for (const user of users) {
-      const hasCalendars =
-        (user.calendars && user.calendars.length > 0) || Boolean(user.icalUrl);
-      if (!user.enabled || !hasCalendars) continue;
+      for (const user of users) {
+        const hasCalendars =
+          (user.calendars && user.calendars.length > 0) || Boolean(user.icalUrl);
+        if (!user.enabled || !hasCalendars) continue;
 
-      if (user.dailyDigestEnabled) {
-        await this.checkUserDailyDigest(user);
-      }
+        if (user.dailyDigestEnabled) {
+          await this.checkUserDailyDigest(user);
+        }
 
-      try {
-        const events = await this.getUserEvents(user);
-        const reminderLeadMinutes = user.reminderMinutes ?? 10;
-        const targetWindowMs = reminderLeadMinutes * 60 * 1000;
+        try {
+          const events = await this.getUserEvents(user);
+          const reminderLeadMinutes = user.reminderMinutes ?? 10;
+          const targetWindowMs = reminderLeadMinutes * 60 * 1000;
 
-        for (const event of events) {
-          if (event.isAllDay) continue; // Skip all-day events from minute-level alerts
+          for (const event of events) {
+            if (event.isAllDay) continue; // Skip all-day events from minute-level alerts
 
-          const startTime = event.start.getTime();
-          const msUntilStart = startTime - now;
+            const startTime = event.start.getTime();
+            const msUntilStart = startTime - now;
 
-          // Check if event start is within the reminder window (lead time down to 1 minute after start)
-          if (msUntilStart <= targetWindowMs && msUntilStart >= -60 * 1000) {
-            const alreadySent = storage.hasReminderBeenSent(
-              user.userId,
-              event.id,
-              reminderLeadMinutes,
-            );
-
-            if (!alreadySent) {
-              await this.sendReminder(user.userId, event, reminderLeadMinutes);
-              storage.markReminderSent(
+            // Check if event start is within the reminder window (lead time down to 1 minute after start)
+            if (msUntilStart <= targetWindowMs && msUntilStart >= -60 * 1000) {
+              const alreadySent = storage.hasReminderBeenSent(
                 user.userId,
                 event.id,
                 reminderLeadMinutes,
               );
+
+              if (!alreadySent) {
+                await this.sendReminder(user.userId, event, reminderLeadMinutes);
+                storage.markReminderSent(
+                  user.userId,
+                  event.id,
+                  reminderLeadMinutes,
+                );
+              }
             }
           }
+        } catch (err) {
+          console.error(
+            `Error processing reminders for user ${user.userId}:`,
+            err,
+          );
         }
-      } catch (err) {
-        console.error(
-          `Error processing reminders for user ${user.userId}:`,
-          err,
-        );
       }
+    } finally {
+      this.isChecking = false;
     }
   }
 
@@ -289,23 +299,33 @@ export class ReminderEngine {
    */
   private async checkUserDailyDigest(user: UserCalendarConfig) {
     if (!user.dailyDigestEnabled) return;
-    const tz = user.timezone || "America/Toronto";
-    const now = new Date();
-    const currentTimeStr = now.toLocaleTimeString("en-US", {
-      timeZone: tz,
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    const todayDateStr = now.toLocaleDateString("en-CA", { timeZone: tz });
-    const targetTime = user.dailyDigestTime || "08:00";
-    if (
-      currentTimeStr >= targetTime &&
-      user.lastDailyDigestDate !== todayDateStr
-    ) {
-      user.lastDailyDigestDate = todayDateStr;
-      storage.saveUser(user);
-      await this.sendDailyDigest(user.userId, false);
+    let tz = user.timezone || "America/Toronto";
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: tz });
+    } catch {
+      tz = "America/Toronto";
+    }
+
+    try {
+      const now = new Date();
+      const currentTimeStr = now.toLocaleTimeString("en-US", {
+        timeZone: tz,
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const todayDateStr = now.toLocaleDateString("en-CA", { timeZone: tz });
+      const targetTime = user.dailyDigestTime || "08:00";
+      if (
+        currentTimeStr >= targetTime &&
+        user.lastDailyDigestDate !== todayDateStr
+      ) {
+        user.lastDailyDigestDate = todayDateStr;
+        storage.saveUser(user);
+        await this.sendDailyDigest(user.userId, false);
+      }
+    } catch (err) {
+      console.error(`Error checking daily digest for user ${user.userId}:`, err);
     }
   }
 }

@@ -34,4 +34,7 @@ export interface CalendarEvent {
 export interface UserSettingsUpdate {
   reminderMinutes?: number;
   enabled?: boolean;
+  timezone?: string;
+  dailyDigestEnabled?: boolean;
+  dailyDigestTime?: string;
 }

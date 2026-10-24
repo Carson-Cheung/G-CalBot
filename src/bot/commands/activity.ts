@@ -40,6 +40,13 @@ export const activityCommand = {
         },
       );
 
+    if (!config.clientId) {
+      return interaction.reply({
+        content: "⚠️ Activity dashboard is unavailable: `DISCORD_CLIENT_ID` is not configured.",
+        ephemeral: true,
+      });
+    }
+
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setLabel("Launch Activity")
