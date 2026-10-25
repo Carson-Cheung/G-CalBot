@@ -50,11 +50,14 @@
   -webkit-font-smoothing: antialiased;
 }
 
+html,
 body {
   background-color: var(--bg-obsidian);
   color: var(--text-primary);
   min-height: 100vh;
+  height: 100%;
   overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
   background-image:
     radial-gradient(circle at 50% 0%, rgba(88, 101, 242, 0.08) 0%, transparent 60%),
@@ -290,6 +293,20 @@ body {
   height: 32px;
   border-radius: 50%;
   object-fit: cover;
+  border: 1px solid var(--border-card);
+}
+
+.user-avatar-fallback {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--primary-blurple), var(--gcal-blue));
   border: 1px solid var(--border-card);
 }
 

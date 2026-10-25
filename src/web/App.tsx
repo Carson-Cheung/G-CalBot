@@ -82,6 +82,38 @@ interface ToastInfo {
 }
 
 /* ==========================================================================
+   Safe Storage Wrapper (Prevents SecurityError in Sandboxed Iframes)
+   ========================================================================== */
+
+const memoryStorage = new Map<string, string>();
+
+const safeStorage = {
+  getItem(key: string): string | null {
+    try {
+      return window.localStorage.getItem(key) ?? memoryStorage.get(key) ?? null;
+    } catch {
+      return memoryStorage.get(key) ?? null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    memoryStorage.set(key, value);
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // Ignore SecurityError inside cross-origin Discord Activity iframe
+    }
+  },
+  removeItem(key: string): void {
+    memoryStorage.delete(key);
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore SecurityError inside cross-origin Discord Activity iframe
+    }
+  },
+};
+
+/* ==========================================================================
    Color Palette & Deterministic Hash
    ========================================================================== */
 
@@ -324,6 +356,7 @@ export const App: React.FC = () => {
   const [userId, setUserId] = useState<string>('demo-user');
   const [isDemo, setIsDemo] = useState<boolean>(true);
   const [authUser, setAuthUser] = useState<DiscordUser | null>(null);
+  const [avatarLoadError, setAvatarLoadError] = useState<boolean>(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
@@ -419,117 +452,171 @@ export const App: React.FC = () => {
       setAuthLoading(true);
 
       const urlParams = new URLSearchParams(window.location.search);
+      const frameId = urlParams.get('frame_id');
 
-      // Step 1: Check ?session= param
+      // Step 1: Check ?session= param (only strip when not inside Discord Activity)
       const sessionParam = urlParams.get('session');
       if (sessionParam) {
-        localStorage.setItem('gcalbot_session', sessionParam);
-        const cleanSearch = window.location.search
-          .replace(/([?&])session=[^&]+(&|$)/, '$1')
-          .replace(/[?&]$/, '');
-        window.history.replaceState({}, '', window.location.pathname + cleanSearch);
+        safeStorage.setItem('gcalbot_session', sessionParam);
+        if (!frameId) {
+          try {
+            const cleanSearch = window.location.search
+              .replace(/([?&])session=[^&]+(&|$)/, '$1')
+              .replace(/[?&]$/, '');
+            window.history.replaceState({}, '', window.location.pathname + cleanSearch);
+          } catch {
+            // Ignore history state errors in restricted contexts
+          }
+        }
       }
 
       // Step 2: Check if running inside Discord Activity iframe
-      const isInsideDiscord = Boolean(urlParams.get('frame_id')) || (window.parent !== window);
+      const isInsideDiscord = Boolean(frameId) || (window.parent !== window);
 
-      if (isInsideDiscord && !sessionParam) {
-        // Fast-path: Check Activity Handoff first (resolves in <50ms when launched via /act or /dash)
-        try {
-          const handoffRes = await fetch('/api/auth/activity-handoff', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              frameId: urlParams.get('frame_id'),
-              isInsideDiscord: true,
-            }),
-          });
-          if (handoffRes.ok) {
-            const handoffData = await handoffRes.json();
-            if (handoffData.authenticated && handoffData.user && !isCancelled) {
-              if (handoffData.sessionToken) {
-                localStorage.setItem('gcalbot_session', handoffData.sessionToken);
-                setSessionToken(handoffData.sessionToken);
-              }
-              setAuthUser(handoffData.user);
-              setUserId(handoffData.user.id || handoffData.user.userId || 'demo-user');
-              setIsDemo(false);
-              setAuthLoading(false);
-              return;
-            }
+      if (isInsideDiscord) {
+        let sdkInstance: DiscordSDK | null = null;
+        let resolvedClientId: string | null = urlParams.get('client_id');
+
+        // Extract clientId from <clientId>.discordsays.com hostname if available
+        if (!resolvedClientId) {
+          const hostPrefix = window.location.hostname.split('.')[0];
+          if (/^\d{15,22}$/.test(hostPrefix)) {
+            resolvedClientId = hostPrefix;
           }
-        } catch (handoffErr) {
-          console.warn('Activity handoff check skipped:', handoffErr);
         }
 
-        // Secondary path: Native Discord Embedded App SDK OAuth2
-        try {
-          const cfgRes = await fetch('/api/config');
-          const cfg = await cfgRes.json();
-          const clientId = cfg.clientId;
-
-          if (clientId) {
-            const sdk = new DiscordSDK(clientId);
-            const readyPromise = sdk.ready();
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('DiscordSDK ready timeout')), 3000)
-            );
-            await Promise.race([readyPromise, timeoutPromise]);
-
-            const requestCode = async (promptMode?: 'none') => {
-              const authCall = sdk.commands.authorize({
-                client_id: clientId,
-                response_type: 'code',
-                state: '',
-                ...(promptMode ? { prompt: promptMode } : {}),
-                scope: ['identify'],
-              });
-              const authTimeout = new Promise<{ code: string }>((_, reject) =>
-                setTimeout(() => reject(new Error('DiscordSDK authorize timeout')), 3000)
-              );
-              return Promise.race([authCall, authTimeout]);
-            };
-
-            let code: string | null = null;
-            try {
-              const resSilent = await requestCode('none');
-              code = resSilent.code;
-            } catch {
-              const resInteractive = await requestCode();
-              code = resInteractive.code;
+        // CRITICAL: Always initialize DiscordSDK and send FRAME_READY (sdk.ready())
+        // whenever frame_id is present, otherwise Discord keeps its grey loading screen up forever!
+        if (frameId) {
+          try {
+            if (!resolvedClientId) {
+              const cfgRes = await fetch('/api/config');
+              if (cfgRes.ok) {
+                const cfg = await cfgRes.json();
+                resolvedClientId = cfg.clientId || null;
+              }
             }
 
-            if (code) {
-              const tokenRes = await fetch('/api/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code }),
-              });
+            if (resolvedClientId) {
+              sdkInstance = new DiscordSDK(resolvedClientId);
+              const readyPromise = sdkInstance.ready();
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('DiscordSDK ready timeout')), 4000)
+              );
+              await Promise.race([readyPromise, timeoutPromise]);
+            }
+          } catch (readyErr) {
+            console.warn('DiscordSDK ready handshake warning:', readyErr);
+          }
+        }
 
-              if (tokenRes.ok) {
-                const data = await tokenRes.json();
-                if (data.user && !isCancelled) {
-                  const token = data.sessionToken || data.access_token;
-                  if (token) {
-                    localStorage.setItem('gcalbot_session', token);
-                    setSessionToken(token);
+        if (!sessionParam) {
+          // Fast-path: Check Activity Handoff (resolves in <50ms when launched via /act or /dash)
+          try {
+            const handoffRes = await fetch('/api/auth/activity-handoff', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                frameId,
+                isInsideDiscord: true,
+              }),
+            });
+            if (handoffRes.ok) {
+              const handoffData = await handoffRes.json();
+              if (handoffData.authenticated && handoffData.user && !isCancelled) {
+                if (handoffData.sessionToken) {
+                  safeStorage.setItem('gcalbot_session', handoffData.sessionToken);
+                  setSessionToken(handoffData.sessionToken);
+                }
+                setAvatarLoadError(false);
+                setAuthUser(handoffData.user);
+                setUserId(handoffData.user.id || handoffData.user.userId || 'demo-user');
+                setIsDemo(false);
+                setAuthLoading(false);
+                return;
+              }
+            }
+          } catch (handoffErr) {
+            console.warn('Activity handoff check skipped:', handoffErr);
+          }
+
+          // Secondary path: Native Discord Embedded App SDK OAuth2
+          try {
+            if (!resolvedClientId) {
+              const cfgRes = await fetch('/api/config');
+              if (cfgRes.ok) {
+                const cfg = await cfgRes.json();
+                resolvedClientId = cfg.clientId || null;
+              }
+            }
+
+            if (resolvedClientId) {
+              const sdk = sdkInstance || new DiscordSDK(resolvedClientId);
+              if (!sdkInstance) {
+                const readyPromise = sdk.ready();
+                const timeoutPromise = new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('DiscordSDK ready timeout')), 3500)
+                );
+                await Promise.race([readyPromise, timeoutPromise]);
+              }
+
+              const clientId = resolvedClientId;
+              const requestCode = async (promptMode?: 'none') => {
+                const authCall = sdk.commands.authorize({
+                  client_id: clientId,
+                  response_type: 'code',
+                  state: '',
+                  ...(promptMode ? { prompt: promptMode } : {}),
+                  scope: ['identify'],
+                });
+                const authTimeout = new Promise<{ code: string }>((_, reject) =>
+                  setTimeout(() => reject(new Error('DiscordSDK authorize timeout')), 3500)
+                );
+                return Promise.race([authCall, authTimeout]);
+              };
+
+              let code: string | null = null;
+              try {
+                const resSilent = await requestCode('none');
+                code = resSilent.code;
+              } catch {
+                const resInteractive = await requestCode();
+                code = resInteractive.code;
+              }
+
+              if (code) {
+                const tokenRes = await fetch('/api/token', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ code }),
+                });
+
+                if (tokenRes.ok) {
+                  const data = await tokenRes.json();
+                  if (data.user && !isCancelled) {
+                    const token = data.sessionToken || data.access_token;
+                    if (token) {
+                      safeStorage.setItem('gcalbot_session', token);
+                      setSessionToken(token);
+                    }
+                    setAvatarLoadError(false);
+                    setAuthUser(data.user);
+                    setUserId(data.user.id || data.user.userId || 'demo-user');
+                    setIsDemo(false);
+                    setAuthLoading(false);
+                    return;
                   }
-                  setAuthUser(data.user);
-                  setUserId(data.user.id || data.user.userId || 'demo-user');
-                  setIsDemo(false);
-                  setAuthLoading(false);
-                  return;
                 }
               }
             }
+          } catch (sdkErr) {
+            console.warn('DiscordSDK authorization fallback:', sdkErr);
           }
-        } catch (sdkErr) {
-          console.warn('DiscordSDK authorization fallback:', sdkErr);
         }
       }
 
-      // Step 3: Check stored session token in localStorage
-      const storedToken = localStorage.getItem('gcalbot_session');
+      // Step 3: Check stored session token in safeStorage
+      const storedToken = safeStorage.getItem('gcalbot_session');
       if (storedToken) {
         try {
           const verifyRes = await fetch('/api/auth/session', {
@@ -538,6 +625,7 @@ export const App: React.FC = () => {
           if (verifyRes.ok) {
             const sessData = await verifyRes.json();
             if (sessData.authenticated && sessData.user && !isCancelled) {
+              setAvatarLoadError(false);
               setAuthUser(sessData.user);
               setUserId(sessData.user.id || sessData.user.userId || 'demo-user');
               setSessionToken(storedToken);
@@ -546,9 +634,9 @@ export const App: React.FC = () => {
               return;
             }
           }
-          localStorage.removeItem('gcalbot_session');
+          safeStorage.removeItem('gcalbot_session');
         } catch (_err) {
-          localStorage.removeItem('gcalbot_session');
+          safeStorage.removeItem('gcalbot_session');
         }
       }
 
@@ -766,7 +854,7 @@ export const App: React.FC = () => {
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem('gcalbot_session');
+    safeStorage.removeItem('gcalbot_session');
     setAuthUser(null);
     setSessionToken(null);
     setUserId('demo-user');
@@ -923,11 +1011,18 @@ export const App: React.FC = () => {
           {authUser ? (
             <div className="auth-user-pill">
               <div className="user-avatar-wrap">
-                <img
-                  src={getUserAvatarUrl(authUser)}
-                  alt={authUser.username}
-                  className="user-avatar-img"
-                />
+                {!avatarLoadError ? (
+                  <img
+                    src={getUserAvatarUrl(authUser)}
+                    alt={authUser.username}
+                    className="user-avatar-img"
+                    onError={() => setAvatarLoadError(true)}
+                  />
+                ) : (
+                  <div className="user-avatar-fallback">
+                    {((authUser.global_name || authUser.username || 'U')[0] || 'U').toUpperCase()}
+                  </div>
+                )}
                 <span className="avatar-status-dot" />
               </div>
               <div className="user-details">
