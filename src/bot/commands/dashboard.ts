@@ -8,6 +8,7 @@ import {
 import { ButtonStyle } from "discord-api-types/v10";
 import { config } from "../../config";
 import { COMMAND_NAMES, EMBED_COLORS } from "../const";
+import { createSessionToken, recordActivityLaunch } from "../../utils/session";
 
 function buildDashboardCommand(name: string) {
   return new SlashCommandBuilder()
@@ -47,11 +48,25 @@ export const dashboardCommand = {
       });
     }
 
+    const userProfile = {
+      userId: interaction.user.id,
+      username: interaction.user.displayName || interaction.user.username,
+      avatarUrl: interaction.user.displayAvatarURL({ size: 128 }),
+    };
+
+    recordActivityLaunch(userProfile);
+    const sessionToken = createSessionToken(userProfile);
+    const webDashboardUrl = `${config.publicUrl.replace(/\/$/, '')}/?session=${encodeURIComponent(sessionToken)}`;
+
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setLabel("Launch Activity")
+        .setLabel("🚀 Launch in Discord")
         .setStyle(ButtonStyle.Link)
         .setURL(`https://discord.com/activities/${config.clientId}`),
+      new ButtonBuilder()
+        .setLabel("🌐 Open Personal Web Dashboard")
+        .setStyle(ButtonStyle.Link)
+        .setURL(webDashboardUrl),
     );
 
     return interaction.reply({

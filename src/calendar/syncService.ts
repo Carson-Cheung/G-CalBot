@@ -26,12 +26,19 @@ export class CalendarSyncService {
       const host = parsedUrl.hostname.toLowerCase();
       if (
         host === 'localhost' ||
-        host === '127.0.0.1' ||
         host === '0.0.0.0' ||
         host === '::1' ||
+        host === '[::1]' ||
         host === '169.254.169.254' ||
         host.endsWith('.local') ||
-        host.endsWith('.internal')
+        host.endsWith('.internal') ||
+        /^127\./.test(host) ||
+        /^10\./.test(host) ||
+        /^192\.168\./.test(host) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+        /^\[?fe80:/i.test(host) ||
+        /^\[?fc00:/i.test(host) ||
+        /^\[?fd00:/i.test(host)
       ) {
         return false;
       }
@@ -123,6 +130,9 @@ export class CalendarSyncService {
             const instanceStart = new Date(date);
             const instanceEnd = new Date(date.getTime() + duration);
 
+            // Skip events that have already ended before now
+            if (instanceEnd < now) continue;
+
             events.push({
               id: `${item.uid}_${instanceStart.getTime()}`,
               title,
@@ -142,7 +152,7 @@ export class CalendarSyncService {
         const start = new Date(item.start);
         const end = item.end ? new Date(item.end) : new Date(start.getTime() + 60 * 60 * 1000);
 
-        if (start >= rangeStart && start <= rangeEnd) {
+        if (start >= rangeStart && start <= rangeEnd && end >= now) {
           events.push({
             id: String(item.uid || `${start.getTime()}_${title}`),
             title,

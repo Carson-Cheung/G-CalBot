@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npm run build:web && tsc",
+    "build:web": "esbuild src/web/App.tsx --bundle --outfile=public/js/app.js --format=esm --platform=browser --target=es2020 --minify",
     "start": "tsx src/index.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },
@@ -21,14 +22,20 @@
     "discord.js": "^14.27.0",
     "dotenv": "^18.0.8",
     "express": "^5.3.0",
+    "lucide-react": "^1.61.0",
     "node-ical": "^0.27.3",
     "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.3"
   }
 }

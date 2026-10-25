@@ -5,13 +5,41 @@ import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { isValidTimezone, isValid24HourTime } from '../../utils/time';
 import { activityLogger } from '../../utils/activityLogger';
-import { UserCalendarConfig } from '../../types';
+import { verifySessionToken } from '../../utils/session';
 
-function resolveUserId(rawUserId: string): string {
-  if (rawUserId && rawUserId !== 'undefined' && rawUserId !== 'null') {
-    return rawUserId.trim();
+function extractBearerToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (typeof authHeader === 'string' && authHeader.trim()) {
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : authHeader.trim();
   }
-  return 'demo-user';
+  if (typeof req.query.session === 'string' && req.query.session.trim()) {
+    return req.query.session.trim();
+  }
+  return null;
+}
+
+export function resolveAuthorizedUserId(req: Request): { userId: string; unauthorized: boolean } {
+  const token = extractBearerToken(req);
+  const verified = verifySessionToken(token);
+  let requestedId = String(req.params.userId || 'demo-user').trim();
+  if (!requestedId || requestedId === 'undefined' || requestedId === 'null') {
+    requestedId = 'demo-user';
+  }
+
+  if (requestedId === 'demo-user' || requestedId === 'me') {
+    if (requestedId === 'me' && verified) {
+      return { userId: verified.userId, unauthorized: false };
+    }
+    return { userId: 'demo-user', unauthorized: false };
+  }
+
+  // requestedId is a real user ID (not 'demo-user')
+  if (!verified || verified.userId !== requestedId) {
+    return { userId: 'demo-user', unauthorized: true };
+  }
+
+  return { userId: verified.userId, unauthorized: false };
 }
 
 export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
@@ -26,8 +54,16 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     });
   });
 
-  // Export database backup for hosting persistence
-  router.get('/backup', (_req: Request, res: Response) => {
+  // Export database backup (restricted to authenticated bot owner only)
+  router.get('/backup', async (req: Request, res: Response) => {
+    const token = extractBearerToken(req);
+    const verified = verifySessionToken(token);
+    const ownerId = (await reminderEngine?.getOwnerUserId()) || config.ownerUserId;
+    if (!verified || !ownerId || verified.userId !== ownerId) {
+      return res.status(401).json({
+        error: 'Unauthorized: Database backup endpoint is restricted to the bot owner.',
+      });
+    }
     res.json(storage.getBackup());
   });
 
@@ -45,17 +81,10 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
   // Get user calendar status and upcoming events
   router.get('/user/:userId/calendar', async (req: Request, res: Response) => {
-    const userId = resolveUserId(String(req.params.userId));
-    if (!userId) {
-      return res.json({
-        linked: false,
-        reminderMinutes: 10,
-        enabled: true,
-        timezone: 'America/New_York',
-        dailyDigestEnabled: false,
-        dailyDigestTime: '08:00',
-        calendars: [],
-        events: [],
+    const { userId, unauthorized } = resolveAuthorizedUserId(req);
+    if (unauthorized) {
+      return res.status(401).json({
+        error: 'Unauthorized: Please sign in through Discord or run /dash in Discord to access your personal calendar.',
       });
     }
 
@@ -103,10 +132,18 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
   // Link calendar via iCal URL
   router.post('/user/:userId/calendar', async (req: Request, res: Response) => {
-    const userId = resolveUserId(String(req.params.userId));
-    if (!userId) {
-      return res.status(400).json({ error: 'A valid Discord user ID is required to link calendars.' });
+    const { userId, unauthorized } = resolveAuthorizedUserId(req);
+    if (unauthorized) {
+      return res.status(401).json({
+        error: 'Unauthorized: Please sign in through Discord or run /dash in Discord to access your personal calendar.',
+      });
     }
+    if (userId === 'demo-user') {
+      return res.status(403).json({
+        error: 'Demo mode is read-only. Run /dash in Discord or launch the Activity to manage your own calendar!',
+      });
+    }
+
     const { icalUrl, name, reminderMinutes } = req.body;
 
     if (!icalUrl || typeof icalUrl !== 'string') {
@@ -154,10 +191,18 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
   // Unlink calendar handler supporting both :calId param and ?calendarId query
   const handleUnlink = (req: Request, res: Response) => {
-    const userId = resolveUserId(String(req.params.userId));
-    if (!userId) {
-      return res.status(400).json({ error: 'Invalid user ID' });
+    const { userId, unauthorized } = resolveAuthorizedUserId(req);
+    if (unauthorized) {
+      return res.status(401).json({
+        error: 'Unauthorized: Please sign in through Discord or run /dash in Discord to access your personal calendar.',
+      });
     }
+    if (userId === 'demo-user') {
+      return res.status(403).json({
+        error: 'Demo mode is read-only. Run /dash in Discord or launch the Activity to manage your own calendar!',
+      });
+    }
+
     const rawCalId = req.params.calId;
     const calIdParam = Array.isArray(rawCalId) ? rawCalId[0] : rawCalId;
     const calendarId = calIdParam || (req.query.calendarId ? String(req.query.calendarId) : undefined);
@@ -178,10 +223,18 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
   // Update reminder settings
   router.patch('/user/:userId/settings', (req: Request, res: Response) => {
-    const userId = resolveUserId(String(req.params.userId));
-    if (!userId) {
-      return res.status(400).json({ error: 'Invalid user ID' });
+    const { userId, unauthorized } = resolveAuthorizedUserId(req);
+    if (unauthorized) {
+      return res.status(401).json({
+        error: 'Unauthorized: Please sign in through Discord or run /dash in Discord to access your personal calendar.',
+      });
     }
+    if (userId === 'demo-user') {
+      return res.status(403).json({
+        error: 'Demo mode is read-only. Run /dash in Discord or launch the Activity to manage your own calendar!',
+      });
+    }
+
     const { reminderMinutes, enabled, timezone, dailyDigestEnabled, dailyDigestTime } = req.body;
     let user = storage.getUser(userId);
 
@@ -232,7 +285,13 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
   // Send a test reminder DM
   router.post('/user/:userId/test', async (req: Request, res: Response) => {
-    const userId = resolveUserId(String(req.params.userId));
+    const { userId, unauthorized } = resolveAuthorizedUserId(req);
+    if (unauthorized) {
+      return res.status(401).json({
+        error: 'Unauthorized: Please sign in through Discord or run /dash in Discord to access your personal calendar.',
+      });
+    }
+
     const isDemo = userId === 'demo-user';
     const targetDiscordUserId = isDemo
       ? (await reminderEngine?.getOwnerUserId()) || config.ownerUserId

@@ -5,7 +5,7 @@ import {
   ButtonBuilder,
 } from "discord.js";
 import { ButtonStyle } from "discord-api-types/v10";
-import { COMMAND_NAMES, EMBED_COLORS } from "../const";
+import { COMMAND_NAMES } from "../const";
 
 export const openCommand = {
   data: new SlashCommandBuilder()

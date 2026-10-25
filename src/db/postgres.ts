@@ -1,5 +1,5 @@
 import { Pool, PoolClient } from 'pg';
-import { UserCalendarConfig, LinkedCalendar } from '../types';
+import { UserCalendarConfig } from '../types';
 
 /**
  * Creates and configures a PostgreSQL connection pool with SSL enabled for Neon PostgreSQL.

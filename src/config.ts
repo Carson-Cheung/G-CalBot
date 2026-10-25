@@ -10,6 +10,7 @@ export const config = {
   discordToken: process.env.DISCORD_TOKEN || '',
   clientId: process.env.DISCORD_CLIENT_ID || '',
   clientSecret: process.env.DISCORD_CLIENT_SECRET || '',
+  publicUrl: process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || 'https://g-calbot.onrender.com',
   port: Number.isNaN(parsedPort) ? 3000 : parsedPort,
   syncIntervalMinutes: Number.isNaN(parsedSync) ? 5 : parsedSync,
   storagePath: process.env.STORAGE_PATH || path.resolve(process.cwd(), 'data', 'database.json'),

@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { config } from '../../config';
+import {
+  createSessionToken,
+  verifySessionToken,
+  getRecentActivityLaunch,
+} from '../../utils/session';
 
 export const authRouter = Router();
 
 // App public config
-authRouter.get('/config', (_req: Request, res: Response) => {
+authRouter.get(['/config', '/auth/config'], (_req: Request, res: Response) => {
   res.json({ clientId: config.clientId });
 });
 
@@ -33,7 +38,8 @@ authRouter.post('/token', async (req: Request, res: Response) => {
     }
 
     // Fetch user profile from Discord using the new access_token
-    let user = null;
+    let user: any = null;
+    let sessionToken: string | null = null;
     try {
       const userRes = await fetch('https://discord.com/api/users/@me', {
         headers: { Authorization: `Bearer ${data.access_token}` },
@@ -45,11 +51,72 @@ authRouter.post('/token', async (req: Request, res: Response) => {
       console.error('Failed to fetch user with access_token:', uErr);
     }
 
-    res.json({ ...data, user });
+    if (user && user.id) {
+      let avatarUrl: string | undefined = undefined;
+      if (user.avatar) {
+        avatarUrl = `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
+      } else {
+        try {
+          const defaultIndex = (BigInt(user.id) >> 22n) % 6n;
+          avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+        } catch {
+          avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+        }
+      }
+
+      sessionToken = createSessionToken({
+        userId: user.id,
+        username: user.global_name || user.username,
+        avatarUrl,
+      });
+    }
+
+    res.json({ ...data, user, sessionToken });
   } catch (err: any) {
     console.error('OAuth token exchange error:', err);
     res.status(500).json({ error: 'Token exchange failed' });
   }
+});
+
+// Verify current session token
+authRouter.get(['/auth/session', '/session'], (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  let token: string | null = null;
+  if (typeof authHeader === 'string' && authHeader.trim()) {
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    token = match ? match[1].trim() : authHeader.trim();
+  } else if (typeof req.query.session === 'string' && req.query.session.trim()) {
+    token = req.query.session.trim();
+  }
+
+  const payload = verifySessionToken(token);
+  if (payload) {
+    return res.json({ authenticated: true, user: payload });
+  }
+
+  return res.json({
+    authenticated: false,
+    user: { userId: 'demo-user', username: 'Demo Showcase' },
+  });
+});
+
+// Discord Activity iframe launch handoff
+authRouter.post(['/auth/activity-handoff', '/activity-handoff'], (req: Request, res: Response) => {
+  const { frameId, isInsideDiscord } = req.body || {};
+  if (!frameId && !isInsideDiscord) {
+    return res.status(400).json({
+      authenticated: false,
+      error: 'Activity handoff is only permitted from Discord Activity context',
+    });
+  }
+
+  const recentUser = getRecentActivityLaunch();
+  if (recentUser) {
+    const sessionToken = createSessionToken(recentUser);
+    return res.json({ authenticated: true, sessionToken, user: recentUser });
+  }
+
+  return res.json({ authenticated: false });
 });
 
 export default authRouter;
