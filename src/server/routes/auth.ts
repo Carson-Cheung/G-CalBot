@@ -122,7 +122,7 @@ authRouter.post(
       activityLogger.log(
         "system",
         "📱",
-        `Discord Activity connected for @${recentUser.username}`,
+        `Discord Activity connected for the user @${recentUser.username}`,
       );
       const sessionToken = createSessionToken(recentUser);
       return res.json({ authenticated: true, sessionToken, user: recentUser });
