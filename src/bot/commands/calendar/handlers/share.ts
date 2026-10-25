@@ -12,8 +12,7 @@ export async function handleShare(
   const user = storage.getUser(userId);
   if (!user || (!user.calendars.length && !user.icalUrl)) {
     return interaction.reply({
-      content:
-        "⚠️ You haven't linked a calendar yet! Use `/cal link` first.",
+      content: "⚠️ You haven't linked a calendar yet! Use `/cal link` first.",
       ephemeral: true,
     });
   }
@@ -21,19 +20,18 @@ export async function handleShare(
   const tz = user.timezone || DEFAULT_TIMEZONE;
   const until = interaction.options.getString("until") || "3d";
   const now = new Date();
-  const { windowEnd: cutoff, rangeDescription: timeLabel, windowDays } = parseShareWindow(until, now, tz);
-
-  const allEvents = await reminderEngine.getUserEvents(
-    user,
-    true,
+  const {
+    windowEnd: cutoff,
+    rangeDescription: timeLabel,
     windowDays,
-  );
+  } = parseShareWindow(until, now, tz);
+
+  const allEvents = await reminderEngine.getUserEvents(user, true, windowDays);
 
   // only keep events between time range
   const sharedEvents = allEvents.filter(
     (e) =>
-      e.start.getTime() <= cutoff.getTime() &&
-      e.end.getTime() >= now.getTime(),
+      e.start.getTime() <= cutoff.getTime() && e.end.getTime() >= now.getTime(),
   );
 
   if (sharedEvents.length === 0) {
@@ -71,7 +69,7 @@ export async function handleShare(
   embed.addFields({
     name: "\u200B",
     value:
-      "✨ *Like this bot? Get started with `/cal guide` to link your own calendar!*",
+      "✨ *Like what you see? Get started with `/cal guide` to link your own calendar!*",
   });
 
   embed.setFooter({
