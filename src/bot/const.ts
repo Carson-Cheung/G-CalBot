@@ -3,7 +3,7 @@
 export const COMMANDS = {
   CAL: "cal",
   CALENDAR: "calendar",
-  ACTIVITY: "activity",
+  ACTIVITY: "dashboard",
   ACT: "act",
   OPEN: "open",
   O: "o",
