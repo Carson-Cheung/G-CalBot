@@ -349,6 +349,16 @@ function getNextEventCountdown(events: CalendarEvent[]): { countdown: string; ti
    ========================================================================== */
 
 export const App: React.FC = () => {
+  // Environment Detection
+  const isInsideDiscord = useMemo(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      return Boolean(urlParams.get('frame_id')) || (window.parent !== window);
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Navigation
   const [activeTab, setActiveTab] = useState<'schedule' | 'calendars' | 'settings'>('schedule');
 
@@ -561,8 +571,11 @@ export const App: React.FC = () => {
                   ...(promptMode ? { prompt: promptMode } : {}),
                   scope: ['identify'],
                 });
+                // For silent auth ('none'), timeout quickly so UI does not hang.
+                // For interactive prompt modal, give user up to 60s to click Discord's Authorize button!
+                const timeoutMs = promptMode === 'none' ? 2000 : 60000;
                 const authTimeout = new Promise<{ code: string }>((_, reject) =>
-                  setTimeout(() => reject(new Error('DiscordSDK authorize timeout')), 3500)
+                  setTimeout(() => reject(new Error('DiscordSDK authorize timeout')), timeoutMs)
                 );
                 return Promise.race([authCall, authTimeout]);
               };
@@ -857,6 +870,69 @@ export const App: React.FC = () => {
     }
   };
 
+  const loginWithDiscord = async () => {
+    try {
+      setAuthLoading(true);
+      const urlParams = new URLSearchParams(window.location.search);
+      let clientId = urlParams.get('client_id');
+      if (!clientId) {
+        const hostPrefix = window.location.hostname.split('.')[0];
+        if (/^\d{15,22}$/.test(hostPrefix)) clientId = hostPrefix;
+      }
+      if (!clientId) {
+        const cfgRes = await fetch('/api/config');
+        if (cfgRes.ok) {
+          const cfg = await cfgRes.json();
+          clientId = cfg.clientId;
+        }
+      }
+      if (!clientId) {
+        throw new Error('Missing Discord Client ID');
+      }
+
+      const sdk = new DiscordSDK(clientId);
+      await sdk.ready();
+
+      const resInteractive = await sdk.commands.authorize({
+        client_id: clientId,
+        response_type: 'code',
+        state: '',
+        scope: ['identify'],
+      });
+
+      if (resInteractive.code) {
+        const tokenRes = await fetch('/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: resInteractive.code }),
+        });
+
+        if (tokenRes.ok) {
+          const data = await tokenRes.json();
+          if (data.user) {
+            const token = data.sessionToken || data.access_token;
+            if (token) {
+              safeStorage.setItem('gcalbot_session', token);
+              setSessionToken(token);
+            }
+            setAvatarLoadError(false);
+            setAuthUser(data.user);
+            setUserId(data.user.id || data.user.userId || 'demo-user');
+            setIsDemo(false);
+            triggerToast(`Signed in as @${data.user.global_name || data.user.username}!`, 'success');
+            return;
+          }
+        }
+      }
+      triggerToast('Could not complete Discord authentication', 'error');
+    } catch (err: any) {
+      console.warn('Manual login error:', err);
+      triggerToast('Discord sign-in was cancelled or timed out.', 'info');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleSignOut = () => {
     safeStorage.removeItem('gcalbot_session');
     setAuthUser(null);
@@ -1067,15 +1143,27 @@ export const App: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="demo-showcase-pill">
-              <div className="demo-pill-icon">
+            isInsideDiscord ? (
+              <button
+                type="button"
+                className="action-btn btn-primary-gradient"
+                onClick={loginWithDiscord}
+                title="Authorize with your Discord account"
+              >
                 <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Sign In with Discord</span>
+              </button>
+            ) : (
+              <div className="demo-showcase-pill">
+                <div className="demo-pill-icon">
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                </div>
+                <div className="demo-pill-text">
+                  <span className="demo-title">Public Demo Showcase</span>
+                  <span className="demo-sub">Read-Only Preview</span>
+                </div>
               </div>
-              <div className="demo-pill-text">
-                <span className="demo-title">Public Demo Showcase</span>
-                <span className="demo-sub">Read-Only Preview</span>
-              </div>
-            </div>
+            )
           )}
         </div>
       </header>
@@ -1434,19 +1522,31 @@ export const App: React.FC = () => {
                 <div>
                   <h4 className="banner-title">Public Demo Showcase Mode</h4>
                   <p className="banner-desc">
-                    You are previewing sample calendar feeds. To connect your personal Google Calendar and configure Discord alerts, launch this app via <strong>/dash</strong> or <strong>/act</strong> inside Discord!
+                    {isInsideDiscord
+                      ? 'You are currently viewing sample demo feeds. Click "Sign In with Discord" to connect your personal Google Calendar and configure alerts!'
+                      : 'You are previewing sample calendar feeds. To connect your personal Google Calendar and configure Discord alerts, launch this app via /dash or /act inside Discord!'}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                className="banner-cta-btn"
-                onClick={() => {
-                  window.open('https://discord.com/app', '_blank');
-                }}
-              >
-                Launch in Discord <ExternalLink className="w-3.5 h-3.5 ml-1 inline" />
-              </button>
+              {isInsideDiscord ? (
+                <button
+                  type="button"
+                  className="banner-cta-btn"
+                  onClick={loginWithDiscord}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1 inline text-amber-300" /> Sign In with Discord
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="banner-cta-btn"
+                  onClick={() => {
+                    window.open('https://discord.com/app', '_blank');
+                  }}
+                >
+                  Launch in Discord <ExternalLink className="w-3.5 h-3.5 ml-1 inline" />
+                </button>
+              )}
             </div>
           )}
 
