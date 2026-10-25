@@ -633,7 +633,7 @@ export const App: React.FC = () => {
       if (data.success) {
         triggerToast(
           isDemo
-            ? 'Demo DM alert triggered successfully! (Delivered to bot owner/channel)'
+            ? 'Demo DM alert triggered successfully! DMed demo reminder to bot owner (I will be very happy to see that someone is checking my demo out!)'
             : 'Test DM reminder sent directly to your Discord inbox!',
           'success'
         );
