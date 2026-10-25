@@ -498,10 +498,31 @@ export const App: React.FC = () => {
             }
 
             if (resolvedClientId) {
+              // Send direct RPC HANDSHAKE (Opcode 0) to parent frame immediately as failsafe
+              try {
+                if (window.parent && window.parent !== window) {
+                  window.parent.postMessage(
+                    [
+                      0,
+                      {
+                        v: 1,
+                        encoding: 'json',
+                        client_id: resolvedClientId,
+                        frame_id: frameId,
+                        sdk_version: '2.5.0',
+                      },
+                    ],
+                    '*'
+                  );
+                }
+              } catch {
+                // Ignore direct postMessage fallback errors
+              }
+
               sdkInstance = new DiscordSDK(resolvedClientId);
               const readyPromise = sdkInstance.ready();
               const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('DiscordSDK ready timeout')), 4000)
+                setTimeout(() => reject(new Error('DiscordSDK ready timeout')), 2500)
               );
               await Promise.race([readyPromise, timeoutPromise]);
             }
