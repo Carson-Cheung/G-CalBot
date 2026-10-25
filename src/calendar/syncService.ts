@@ -1,5 +1,6 @@
 import nodeIcal from 'node-ical';
 import { CalendarEvent, LinkedCalendar } from '../types';
+import { getTimezoneDayRange } from '../utils/time';
 
 export class CalendarSyncService {
   /**
@@ -11,6 +12,33 @@ export class CalendarSyncService {
       clean = 'https://' + clean.slice('webcal://'.length);
     }
     return clean;
+  }
+
+  /**
+   * Validates URL format and prevents SSRF to internal/loopback addresses.
+   */
+  public static isSafeFeedUrl(url: string): boolean {
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return false;
+      }
+      const host = parsedUrl.hostname.toLowerCase();
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host === '::1' ||
+        host === '169.254.169.254' ||
+        host.endsWith('.local') ||
+        host.endsWith('.internal')
+      ) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -184,35 +212,8 @@ export class CalendarSyncService {
   }
 
   /**
-   * Returns timezone-accurate start and end Date objects for a user's day range.
-   * Prevents UTC servers (like Render) from truncating events after 8:00 PM local time.
+   * Timezone-accurate start and end Date objects for a user's day range.
+   * Static wrapper preserving backwards compatibility with existing callers.
    */
-  public static getTimezoneDayRange(
-    baseDate: Date,
-    daysOffset: number = 0,
-    tz: string = 'America/Toronto'
-  ): { start: Date; end: Date } {
-    try {
-      const dateStr = baseDate.toLocaleDateString('en-CA', { timeZone: tz });
-      const [y, m, d] = dateStr.split('-').map(Number);
-      const targetMidnight = new Date(Date.UTC(y, m - 1, d + daysOffset, 12, 0, 0));
-      const targetDateStr = targetMidnight.toLocaleDateString('en-CA', { timeZone: 'UTC' });
-
-      const startStr = `${targetDateStr}T00:00:00`;
-      const endStr = `${targetDateStr}T23:59:59.999`;
-
-      const tzDate = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-      const offsetDiff = new Date().getTime() - tzDate.getTime();
-
-      return {
-        start: new Date(new Date(startStr).getTime() + offsetDiff),
-        end: new Date(new Date(endStr).getTime() + offsetDiff),
-      };
-    } catch {
-      const d = new Date(baseDate);
-      d.setDate(d.getDate() + daysOffset);
-      d.setHours(23, 59, 59, 999);
-      return { start: new Date(baseDate), end: d };
-    }
-  }
+  public static getTimezoneDayRange = getTimezoneDayRange;
 }

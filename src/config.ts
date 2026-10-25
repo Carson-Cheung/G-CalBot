@@ -13,5 +13,8 @@ export const config = {
   port: Number.isNaN(parsedPort) ? 3000 : parsedPort,
   syncIntervalMinutes: Number.isNaN(parsedSync) ? 5 : parsedSync,
   storagePath: process.env.STORAGE_PATH || path.resolve(process.cwd(), 'data', 'database.json'),
-  isDev: process.env.NODE_ENV !== 'production'
+  databaseUrl: process.env.DATABASE_URL || '',
+  isDev: process.env.NODE_ENV !== 'production',
 };
+
+export default config;

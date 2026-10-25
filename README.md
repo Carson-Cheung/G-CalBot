@@ -6,6 +6,7 @@
   <p>
     <img src="https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript&logoColor=white" alt="TypeScript">
     <img src="https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white" alt="Discord.js">
+    <img src="https://img.shields.io/badge/PostgreSQL-Neon-00E599?logo=postgresql&logoColor=white" alt="Neon PostgreSQL">
     <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-green?logo=node.js&logoColor=white" alt="Node.js">
     <img src="https://img.shields.io/badge/Privacy-100%25%20Protected-brightgreen" alt="Privacy">
   </p>
@@ -34,6 +35,8 @@ Built as a hybrid system:
   Share your schedule directly in channel chat for friends or teammates with dynamic Discord timestamps, custom timeframes (`tdy`, `tmr`, `3d`, `2w`), and zero email leaks.
 - **🔔 24/7 Background DM Reminders**  
   Automated alerts sent straight to your DMs before events begin. Configurable lead times: at start (0m), 5m, 10m (default), 15m, 30m, or 1 hour prior. Full support for recurring events (`RRULE`) and timezones.
+- **🐘 Neon PostgreSQL & Local JSON Hybrid Storage**  
+  Native support for serverless Neon PostgreSQL for persistent multi-user storage across container restarts and cloud redeployments. Automatically falls back to local JSON caching when `DATABASE_URL` is omitted.
 - **🚀 User-Installable (Use Anywhere)**  
   Installable directly to your personal Discord account so you can run slash commands and access your schedule across **any server**, DMs, or group chats.
 - **☁️ Zero-Native Dependencies**  
@@ -49,7 +52,7 @@ All commands feature short convenience aliases for quick typing:
 | :--- | :--- | :--- | :--- |
 | `/calendar link <url> [name]` | `/cal link` | Privately connects a Google Calendar or course `.ics` feed with a custom label. | Private |
 | `/calendar share [until]` | `/cal share` | Posts upcoming schedule in chat (`tdy`, `tmr`, `3d`, `1w`, or custom number of days/weeks). | **Public** |
-| `/calendar daily [time] [enabled]` | `/cal daily` | Configures daily morning schedule digest to DMs at a chosen time (e.g. `08:00`). | Private |
+| `/calendar daily [time] [enabled] [timezone] [test]` | `/cal daily` | Configures daily morning schedule digest to DMs at a chosen 24h time and IANA timezone. | Private |
 | `/calendar view` | `/cal view` | Displays merged upcoming events from all your calendars with direct calendar links. | Private |
 | `/calendar list` | `/cal list` | Lists all your connected calendars with their unique IDs and added dates. | Private |
 | `/calendar unlink [calendar]` | `/cal unlink` | Disconnects a specific calendar by name/ID, or unlinks all feeds. | Private |
@@ -57,7 +60,7 @@ All commands feature short convenience aliases for quick typing:
 | `/calendar test` | `/cal test` | Sends an instant test reminder DM to verify Discord privacy settings. | Private |
 | `/calendar guide` | `/cal guide` | Step-by-step tutorial on finding your Google Calendar private iCal address. | Private |
 | `/open` | `/o` | Sends a direct 1-click button to open Google Calendar in your browser. | Private |
-| `/activity` | `/act` | Launches the embedded Discord Activity dashboard. | Channel |
+| `/dashboard` | `/dash` (`/act`) | Launches the embedded Discord Activity dashboard. | Channel |
 
 ---
 
@@ -66,13 +69,13 @@ All commands feature short convenience aliases for quick typing:
 1. Open [Google Calendar](https://calendar.google.com) in your browser.
 2. In the left sidebar under **My calendars**, hover over your calendar, click the three dots (**⋮**), and select **Settings and sharing**.
 3. Scroll down to the **Integrate calendar** section.
-4. Locate **Secret address in iCal format** and click **Copy**.  
+4. Locate **Secret address in iCal format** and click **Copy** (Google may show a security prompt—this is normal).  
    *(⚠️ Do not use the Public address; use the Secret address).*
 5. In Discord, run:
    ```text
    /cal link url: <paste your secret link> name: Primary
    ```
-6. Or click **Launch Activity** to paste and manage feeds in the visual dashboard.
+6. Or run `/dashboard` (`/dash`) and click **Launch Activity** to paste and manage feeds in the visual dashboard.
 
 ---
 
@@ -99,9 +102,19 @@ All commands feature short convenience aliases for quick typing:
    DISCORD_CLIENT_SECRET=your_application_client_secret
    PORT=3000
    SYNC_INTERVAL_MINUTES=5
+
+   # Neon PostgreSQL Connection String (Optional - falls back to local JSON if omitted)
+   DATABASE_URL=postgresql://user:password@ep-xyz.us-east-2.aws.neon.tech/neondb?sslmode=require
    ```
 
-4. **Run the bot:**
+4. **Database Setup & Automatic Migration:**  
+   - **Automatic Startup Migration**: When `DATABASE_URL` is configured, the bot automatically verifies the database schema, ensures the normalized tables (`users`, `linked_calendars`, and `sent_reminders`) exist, and seamlessly migrates any existing local JSON user calendars into Neon PostgreSQL upon startup.
+   - **Manual CLI Migration**: You can also run the standalone migration CLI at any time to verify database connectivity and preview migrated users:
+     ```bash
+     npm run db:migrate
+     ```
+
+5. **Run the bot:**  
    ```bash
    # Development mode with hot reloading
    npm run dev
@@ -118,24 +131,43 @@ All commands feature short convenience aliases for quick typing:
 ```text
 G-CalBot/
 ├── public/                 # Discord Activity single-page app
-│   ├── index.html          # Embedded dark-mode dashboard
+│   ├── index.html          # Clean HTML dashboard markup
+│   ├── css/
+│   │   └── styles.css      # Modular dark-mode stylesheet
+│   ├── js/
+│   │   └── app.js          # Discord SDK & dashboard client logic
 │   ├── logo.svg            # Custom SVG branding
 │   └── icon-dark.png       # Dark-mode application icon
 ├── src/
 │   ├── index.ts            # Application bootstrap (Bot + Express API)
 │   ├── config.ts           # Environment configuration loader
 │   ├── types.ts            # TypeScript interfaces & data models
+│   ├── utils/
+│   │   └── time.ts         # Timezone, 24h time, and share window helpers
 │   ├── bot/
-│   │   ├── client.ts       # Discord.js client & global/guild command registrar
-│   │   ├── const.ts        # Command identifiers & constants
-│   │   └── commands/       # Slash command handlers (/cal, /act, /o, launch)
+│   │   ├── client.ts       # Discord.js client & interaction router
+│   │   ├── deploy-commands.ts # Global & guild slash command registrar
+│   │   ├── const.ts        # Command identifiers, colors & constants
+│   │   └── commands/       # Modular slash command handlers
+│   │       ├── calendar/   # Modular /calendar & /cal commands
+│   │       │   ├── builder.ts  # Command schema & subcommands definition
+│   │       │   ├── index.ts    # Calendar command routing
+│   │       │   └── handlers/   # Individual subcommand implementations (9 files)
+│   │       ├── dashboard.ts# /dashboard, /dash, /act (Activity launcher)
+│   │       ├── open.ts     # /open & /o (Direct Google Calendar link)
+│   │       └── index.ts    # Command aggregator & registry
 │   ├── calendar/
-│   │   ├── syncService.ts  # RFC 5545 iCal parser, recurrence & timezone handler
-│   │   └── reminderEngine.ts # Background cron loop for 24/7 automated alerts
+│   │   ├── syncService.ts  # RFC 5545 iCal parser, SSRF guard & recurrence handler
+│   │   └── reminderEngine.ts # Background loop for 24/7 automated alerts & digests
 │   ├── db/
-│   │   └── storage.ts      # Lightweight atomic JSON storage engine
+│   │   ├── storage.ts      # Hybrid storage engine (Neon PostgreSQL + local cache)
+│   │   ├── postgres.ts     # Neon PostgreSQL pool, schema & transaction operations
+│   │   └── migrate.ts      # Standalone database migration CLI
 │   └── server/
-│       └── app.ts          # Express API & Activity backend
+│       ├── app.ts          # Express server initialization & static middleware
+│       └── routes/
+│           ├── auth.ts     # Discord OAuth2 token exchange & config routes
+│           └── calendar.ts # User calendar CRUD, settings & health routes
 ├── package.json
 └── tsconfig.json
 ```
@@ -146,5 +178,6 @@ G-CalBot/
 
 - **Zero Credential Sharing**: We never ask for your Google account password or full OAuth permissions.
 - **Ephemerality**: Calendar links and raw schedule queries are ephemeral and visible only to you.
-- **Data Isolation**: Multi-calendar tokens and private `.ics` URLs are stored locally on the server in atomic JSON storage (`data/database.json`), strictly excluded from source control.
+- **SSRF & Feed Validation**: All `.ics` feed requests validate public `http://` and `https://` hosts and enforce strict request timeouts.
+- **Data Isolation**: Multi-calendar tokens and private `.ics` URLs are stored in your secure Neon PostgreSQL database (with local JSON fallback in `data/database.json`), strictly excluded from source control.
 - **Calendar Entry Visibility Disclaimer**: While calendar feed URLs and user emails remain strictly private, data contained within calendar entries (such as event titles, descriptions, and locations) can be displayed in Discord. Keep this in mind when using public commands like `/cal share`.

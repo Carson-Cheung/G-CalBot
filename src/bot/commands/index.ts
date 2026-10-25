@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { calendarCommand, calCommand } from './calendar';
-import { activityCommand, actCommand } from './activity';
+import { dashboardCommand, dashCommand, actCommand, activityCommand } from './dashboard';
 import { openCommand, oCommand } from './open';
 
 export interface BotCommand {
@@ -34,7 +34,8 @@ export const entryPointCommand = {
 export const allCommands: BotCommand[] = [
   calendarCommand,
   calCommand,
-  activityCommand,
+  dashboardCommand,
+  dashCommand,
   actCommand,
   openCommand,
   oCommand,
@@ -47,3 +48,14 @@ export const commandsMap = new Map<string, BotCommand>(
     .filter((cmd): cmd is BotCommand & { execute: NonNullable<BotCommand['execute']> } => typeof cmd.execute === 'function')
     .map((cmd) => [cmd.data.name, cmd])
 );
+
+export {
+  calendarCommand,
+  calCommand,
+  dashboardCommand,
+  dashCommand,
+  actCommand,
+  activityCommand,
+  openCommand,
+  oCommand,
+};

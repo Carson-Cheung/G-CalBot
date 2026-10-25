@@ -1,8 +1,10 @@
-import { Client, EmbedBuilder } from "discord.js";
-import { config } from "../config";
-import { storage } from "../db/storage";
-import { CalendarSyncService } from "./syncService";
-import { CalendarEvent, UserCalendarConfig } from "../types";
+import { Client, EmbedBuilder } from 'discord.js';
+import { config } from '../config';
+import { storage } from '../db/storage';
+import { CalendarSyncService } from './syncService';
+import { CalendarEvent, UserCalendarConfig } from '../types';
+import { getTimezoneDayRange, isValidTimezone } from '../utils/time';
+import { activityLogger } from '../utils/activityLogger';
 
 interface CachedEvents {
   lastFetched: number;
@@ -21,7 +23,8 @@ export class ReminderEngine {
   }
 
   public start() {
-    console.log("Starting calendar reminder engine...");
+    console.log('Starting calendar reminder engine...');
+    activityLogger.log('system', '📅', 'Starting calendar reminder engine...');
     // Run initial check after 5 seconds to let the bot connect
     setTimeout(() => this.checkReminders(), 5000);
 
@@ -33,7 +36,7 @@ export class ReminderEngine {
       () => {
         storage.cleanupOldReminders();
       },
-      24 * 60 * 60 * 1000,
+      24 * 60 * 60 * 1000
     );
   }
 
@@ -48,7 +51,7 @@ export class ReminderEngine {
   public async getUserEvents(
     user: UserCalendarConfig,
     forceRefresh = false,
-    windowDays = 7,
+    windowDays = 7
   ): Promise<CalendarEvent[]> {
     const cached = this.cache.get(user.userId);
     const now = Date.now();
@@ -66,8 +69,8 @@ export class ReminderEngine {
           : user.icalUrl
             ? [
                 {
-                  id: "primary",
-                  name: "Primary",
+                  id: 'primary',
+                  name: 'Primary',
                   url: user.icalUrl,
                   addedAt: user.createdAt,
                 },
@@ -76,7 +79,7 @@ export class ReminderEngine {
 
       const events = await CalendarSyncService.fetchMultipleCalendars(
         calendars,
-        windowDays,
+        windowDays
       );
       if (windowDays === 7) {
         this.cache.set(user.userId, {
@@ -128,7 +131,7 @@ export class ReminderEngine {
               const alreadySent = storage.hasReminderBeenSent(
                 user.userId,
                 event.id,
-                reminderLeadMinutes,
+                reminderLeadMinutes
               );
 
               if (!alreadySent) {
@@ -136,7 +139,7 @@ export class ReminderEngine {
                 storage.markReminderSent(
                   user.userId,
                   event.id,
-                  reminderLeadMinutes,
+                  reminderLeadMinutes
                 );
               }
             }
@@ -144,7 +147,7 @@ export class ReminderEngine {
         } catch (err) {
           console.error(
             `Error processing reminders for user ${user.userId}:`,
-            err,
+            err
           );
         }
       }
@@ -156,7 +159,7 @@ export class ReminderEngine {
   public async sendReminder(
     userId: string,
     event: CalendarEvent,
-    leadMinutes: number,
+    leadMinutes: number
   ): Promise<boolean> {
     try {
       const user = await this.client.users.fetch(userId);
@@ -165,7 +168,7 @@ export class ReminderEngine {
       const startUnix = Math.floor(event.start.getTime() / 1000);
       const endUnix = Math.floor(event.end.getTime() / 1000);
 
-      const titleTag = event.calendarName ? `[${event.calendarName}] ` : "";
+      const titleTag = event.calendarName ? `[${event.calendarName}] ` : '';
 
       const embed = new EmbedBuilder()
         .setColor(0x4285f4) // Google Calendar Blue
@@ -173,17 +176,17 @@ export class ReminderEngine {
         .setDescription(
           leadMinutes === 0
             ? `**Starting right now!**`
-            : `Starting in **${leadMinutes} minutes** (<t:${startUnix}:R>)`,
+            : `Starting in **${leadMinutes} minutes** (<t:${startUnix}:R>)`
         )
         .addFields({
-          name: "⏰ Time",
+          name: '⏰ Time',
           value: `<t:${startUnix}:F> to <t:${endUnix}:t>`,
           inline: false,
         });
 
       if (event.location) {
         embed.addFields({
-          name: "📍 Location",
+          name: '📍 Location',
           value: event.location,
           inline: false,
         });
@@ -195,24 +198,29 @@ export class ReminderEngine {
             ? `${event.description.slice(0, 300)}...`
             : event.description;
         embed.addFields({
-          name: "📝 Description",
+          name: '📝 Description',
           value: truncatedDesc,
           inline: false,
         });
       }
 
       embed.setFooter({
-        text: "Google Calendar Sync • Privacy Protected",
+        text: 'Google Calendar Sync • Privacy Protected',
       });
       embed.setTimestamp();
 
       await user.send({ embeds: [embed] });
       console.log(`Sent reminder to user ${userId} for event "${event.title}"`);
+      activityLogger.log(
+        'reminder',
+        '🔔',
+        `Dispatched event reminder (${leadMinutes === 0 ? 'starting now' : `${leadMinutes}m before`})`
+      );
       return true;
     } catch (err: any) {
       if (err.code === 50007) {
         console.warn(
-          `Cannot send DM to user ${userId} (DMs disabled in Discord settings).`,
+          `Cannot send DM to user ${userId} (DMs disabled in Discord settings).`
         );
       } else {
         console.error(`Failed to send reminder DM to user ${userId}:`, err);
@@ -220,9 +228,10 @@ export class ReminderEngine {
       return false;
     }
   }
+
   public async sendDailyDigest(
     userId: string,
-    isTest = false,
+    isTest = false
   ): Promise<boolean> {
     const user = storage.getUser(userId);
     if (!user) return false;
@@ -232,50 +241,53 @@ export class ReminderEngine {
       if (!discordUser) return false;
 
       // 1. Calculate the start and end of today in user's timezone
-      const tz = user.timezone || "America/Toronto";
+      const tz = user.timezone || 'America/Toronto';
       const now = new Date();
-      const todayRange = CalendarSyncService.getTimezoneDayRange(now, 0, tz);
+      const todayRange = getTimezoneDayRange(now, tz, 1);
       const startOfToday = todayRange.start;
       const endOfToday = todayRange.end;
+
       // 2. Fetch all events and filter for today only
       const allEvents = await this.getUserEvents(user, true);
       const todayEvents = allEvents
         .filter(
           (e) =>
             e.start.getTime() <= endOfToday.getTime() &&
-            e.end.getTime() >= startOfToday.getTime(),
+            e.end.getTime() >= startOfToday.getTime()
         )
         .sort((a, b) => a.start.getTime() - b.start.getTime());
+
       // 3. Create the Embed Card
-      const dateHeader = now.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "short",
-        day: "numeric",
+      const dateHeader = todayRange.dateLabel || now.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
         timeZone: tz,
       });
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2) // Discord Blurple
         .setAuthor({
-          name: `${isTest ? "🧪 [TEST] " : "🌅 "}Daily Schedule Briefing`,
+          name: `${isTest ? '🧪 [TEST] ' : '🌅 '}Daily Schedule Briefing`,
           iconURL: discordUser.displayAvatarURL(),
         })
         .setTitle(`📅 Today's Agenda • ${dateHeader}`);
+
       if (todayEvents.length === 0) {
         embed.setDescription(
-          "🎉 **You have no events scheduled for today!** Enjoy your free day.",
+          '🎉 **You have no events scheduled for today!** Enjoy your free day.'
         );
       } else {
         embed.setDescription(
-          `Good morning! You have **${todayEvents.length} event(s)** scheduled for today:`,
+          `Good morning! You have **${todayEvents.length} event(s)** scheduled for today:`
         );
         for (const ev of todayEvents.slice(0, 15)) {
           const startSec = Math.floor(ev.start.getTime() / 1000);
           const endSec = Math.floor(ev.end.getTime() / 1000);
-          const calTag = ev.calendarName ? ` \`[${ev.calendarName}]\`` : "";
-          const locTag = ev.location ? `\n📍 *${ev.location}*` : "";
+          const calTag = ev.calendarName ? ` \`[${ev.calendarName}]\`` : '';
+          const locTag = ev.location ? `\n📍 *${ev.location}*` : '';
           const timeStr = ev.isAllDay
-            ? "📅 *All Day*"
+            ? '📅 *All Day*'
             : `⏰ <t:${startSec}:t> - <t:${endSec}:t> (<t:${startSec}:R>)`;
           embed.addFields({
             name: `${ev.title}${calTag}`,
@@ -283,39 +295,44 @@ export class ReminderEngine {
           });
         }
       }
+
       embed.setFooter({
-        text: `Daily Reminder Set for ${user.dailyDigestTime || "08:00"} • G-CalBot`,
+        text: `Daily Reminder Set for ${user.dailyDigestTime || '08:00'} • G-CalBot`,
       });
       embed.setTimestamp();
       await discordUser.send({ embeds: [embed] });
+      activityLogger.log(
+        'reminder',
+        '📅',
+        `Dispatched daily schedule briefing${isTest ? ' (test)' : ''}`
+      );
       return true;
     } catch (err: any) {
       console.error(`Failed to send daily digest to ${userId}:`, err);
       return false;
     }
   }
+
   /**
    * Checks whether it's time to send today's daily briefing to the user.
    */
   private async checkUserDailyDigest(user: UserCalendarConfig) {
     if (!user.dailyDigestEnabled) return;
-    let tz = user.timezone || "America/Toronto";
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: tz });
-    } catch {
-      tz = "America/Toronto";
+    let tz = user.timezone || 'America/Toronto';
+    if (!isValidTimezone(tz)) {
+      tz = 'America/Toronto';
     }
 
     try {
       const now = new Date();
-      const currentTimeStr = now.toLocaleTimeString("en-US", {
+      const currentTimeStr = now.toLocaleTimeString('en-US', {
         timeZone: tz,
         hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
+        hour: '2-digit',
+        minute: '2-digit',
       });
-      const todayDateStr = now.toLocaleDateString("en-CA", { timeZone: tz });
-      const targetTime = user.dailyDigestTime || "08:00";
+      const todayDateStr = now.toLocaleDateString('en-CA', { timeZone: tz });
+      const targetTime = user.dailyDigestTime || '08:00';
       if (
         currentTimeStr >= targetTime &&
         user.lastDailyDigestDate !== todayDateStr

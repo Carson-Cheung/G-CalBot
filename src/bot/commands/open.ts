@@ -5,11 +5,11 @@ import {
   ButtonBuilder,
 } from "discord.js";
 import { ButtonStyle } from "discord-api-types/v10";
-import { COMMANDS } from "../const";
+import { COMMAND_NAMES, EMBED_COLORS } from "../const";
 
 export const openCommand = {
   data: new SlashCommandBuilder()
-    .setName(COMMANDS.OPEN)
+    .setName(COMMAND_NAMES.OPEN)
     .setDescription("Direct link to open Google Calendar")
     .setIntegrationTypes([0, 1]) // Available server-wide
     .setContexts([0, 1, 2]),
@@ -31,10 +31,10 @@ export const openCommand = {
   },
 };
 
-//alias function
+// alias function
 export const oCommand = {
   data: new SlashCommandBuilder()
-    .setName(COMMANDS.O)
+    .setName(COMMAND_NAMES.O)
     .setDescription("Direct link to open Google Calendar")
     .setIntegrationTypes([0, 1])
     .setContexts([0, 1, 2]),

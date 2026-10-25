@@ -7,9 +7,9 @@ import {
 } from "discord.js";
 import { ButtonStyle } from "discord-api-types/v10";
 import { config } from "../../config";
-import { COMMANDS } from "../const";
+import { COMMAND_NAMES, EMBED_COLORS } from "../const";
 
-function buildActivityCommand(name: string) {
+function buildDashboardCommand(name: string) {
   return new SlashCommandBuilder()
     .setName(name)
     .setDescription("Open the interactive Google Calendar Activity dashboard")
@@ -17,12 +17,12 @@ function buildActivityCommand(name: string) {
     .setContexts([0, 1, 2]);
 }
 
-export const activityCommand = {
-  data: buildActivityCommand(COMMANDS.ACTIVITY),
+export const dashboardCommand = {
+  data: buildDashboardCommand(COMMAND_NAMES.DASHBOARD),
 
   async execute(interaction: ChatInputCommandInteraction) {
     const embed = new EmbedBuilder()
-      .setColor(0x5865f2) // Discord Blurple
+      .setColor(EMBED_COLORS.DISCORD_BLURPLE) // Discord Blurple
       .setTitle("📱 Google Calendar Activity & Dashboard")
       .setDescription(
         "Launch the Google Calendar Activity inside Discord to view your calendar schedule, manage reminders, and customize your sync settings!",
@@ -62,7 +62,15 @@ export const activityCommand = {
   },
 };
 
-export const actCommand = {
-  data: buildActivityCommand(COMMANDS.ACT),
-  execute: activityCommand.execute,
+export const dashCommand = {
+  data: buildDashboardCommand(COMMAND_NAMES.DASH),
+  execute: dashboardCommand.execute,
 };
+
+export const actCommand = {
+  data: buildDashboardCommand(COMMAND_NAMES.ACT),
+  execute: dashboardCommand.execute,
+};
+
+// Backwards compatibility alias
+export const activityCommand = dashboardCommand;
