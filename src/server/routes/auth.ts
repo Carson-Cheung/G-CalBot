@@ -1,9 +1,6 @@
 import { Router, Request, Response } from "express";
 import { config } from "../../config";
-import {
-  createSessionToken,
-  verifySessionToken,
-} from "../../utils/session";
+import { createSessionToken, verifySessionToken } from "../../utils/session";
 import { activityLogger } from "../../utils/activityLogger";
 
 export const authRouter = Router();
@@ -123,7 +120,7 @@ authRouter.post(
     activityLogger.log(
       "system",
       "📱",
-      "Discord Activity launched demo/guest session.             Was that you? ;)",
+      "Discord Activity launched demo/guest session............. Was that you? ;)",
     );
     return res.json({ authenticated: false });
   },
