@@ -3,7 +3,6 @@ import { config } from "../../config";
 import {
   createSessionToken,
   verifySessionToken,
-  getRecentActivityLaunch,
 } from "../../utils/session";
 import { activityLogger } from "../../utils/activityLogger";
 
@@ -70,6 +69,12 @@ authRouter.post("/token", async (req: Request, res: Response) => {
         username: user.global_name || user.username,
         avatarUrl,
       });
+
+      activityLogger.log(
+        "system",
+        "📱",
+        `Discord Activity authenticated for @${user.global_name || user.username}`,
+      );
     }
 
     res.json({ ...data, user, sessionToken });
@@ -111,43 +116,14 @@ authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
   });
 });
 
-// Discord Activity iframe launch handoff
+// Discord Activity demo launch notification endpoint
 authRouter.post(
   ["/auth/activity-handoff", "/activity-handoff"],
-  (req: Request, res: Response) => {
-    const { frameId, isInsideDiscord, isDemoLaunch } = req.body || {};
-    if (isDemoLaunch) {
-      activityLogger.log(
-        "system",
-        "📱",
-        "Discord Activity launched demo/guest session.             Was that you? ;)",
-      );
-      return res.json({ authenticated: false });
-    }
-
-    if (!frameId && !isInsideDiscord) {
-      return res.status(400).json({
-        authenticated: false,
-        error:
-          "Activity handoff is only permitted from Discord Activity context",
-      });
-    }
-
-    const recentUser = getRecentActivityLaunch();
-    if (recentUser) {
-      activityLogger.log(
-        "system",
-        "📱",
-        `Discord Activity connected for the user @${recentUser.username}`,
-      );
-      const sessionToken = createSessionToken(recentUser);
-      return res.json({ authenticated: true, sessionToken, user: recentUser });
-    }
-
+  (_req: Request, res: Response) => {
     activityLogger.log(
       "system",
       "📱",
-      "Discord Activity launched demo/guest session......................Was that you? ;)",
+      "Discord Activity launched demo/guest session.             Was that you? ;)",
     );
     return res.json({ authenticated: false });
   },

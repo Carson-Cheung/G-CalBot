@@ -532,36 +532,7 @@ export const App: React.FC = () => {
         }
 
         if (!sessionParam) {
-          // Fast-path: Check Activity Handoff (resolves in <50ms when launched via /act or /dash)
-          try {
-            const handoffRes = await fetch('/api/auth/activity-handoff', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                frameId,
-                isInsideDiscord: true,
-              }),
-            });
-            if (handoffRes.ok) {
-              const handoffData = await handoffRes.json();
-              if (handoffData.authenticated && handoffData.user && !isCancelled) {
-                if (handoffData.sessionToken) {
-                  safeStorage.setItem('gcalbot_session', handoffData.sessionToken);
-                  setSessionToken(handoffData.sessionToken);
-                }
-                setAvatarLoadError(false);
-                setAuthUser(handoffData.user);
-                setUserId(handoffData.user.id || handoffData.user.userId || 'demo-user');
-                setIsDemo(false);
-                setAuthLoading(false);
-                return;
-              }
-            }
-          } catch (handoffErr) {
-            console.warn('Activity handoff check skipped:', handoffErr);
-          }
-
-          // Secondary path: Native Discord Embedded App SDK OAuth2
+          // Native Discord Embedded App SDK OAuth2 authentication
           try {
             if (!resolvedClientId) {
               const cfgRes = await fetch('/api/config');
@@ -636,29 +607,33 @@ export const App: React.FC = () => {
         }
       }
 
-      // Step 3: Check stored session token in safeStorage
-      const storedToken = safeStorage.getItem('gcalbot_session');
-      if (storedToken) {
-        try {
-          const verifyRes = await fetch('/api/auth/session?initial=true', {
-            headers: { Authorization: `Bearer ${storedToken}` },
-          });
-          if (verifyRes.ok) {
-            const sessData = await verifyRes.json();
-            if (sessData.authenticated && sessData.user && !isCancelled) {
-              setAvatarLoadError(false);
-              setAuthUser(sessData.user);
-              setUserId(sessData.user.id || sessData.user.userId || 'demo-user');
-              setSessionToken(storedToken);
-              setIsDemo(false);
-              setAuthLoading(false);
-              return;
+      // Step 3: Check stored session token in safeStorage (only for external web dashboard)
+      if (!isInsideDiscord) {
+        const storedToken = safeStorage.getItem('gcalbot_session');
+        if (storedToken) {
+          try {
+            const verifyRes = await fetch('/api/auth/session?initial=true', {
+              headers: { Authorization: `Bearer ${storedToken}` },
+            });
+            if (verifyRes.ok) {
+              const sessData = await verifyRes.json();
+              if (sessData.authenticated && sessData.user && !isCancelled) {
+                setAvatarLoadError(false);
+                setAuthUser(sessData.user);
+                setUserId(sessData.user.id || sessData.user.userId || 'demo-user');
+                setSessionToken(storedToken);
+                setIsDemo(false);
+                setAuthLoading(false);
+                return;
+              }
             }
+            safeStorage.removeItem('gcalbot_session');
+          } catch (_err) {
+            safeStorage.removeItem('gcalbot_session');
           }
-          safeStorage.removeItem('gcalbot_session');
-        } catch (_err) {
-          safeStorage.removeItem('gcalbot_session');
         }
+      } else {
+        safeStorage.removeItem('gcalbot_session');
       }
 
       // Step 4: Default to Public Demo Showcase Mode

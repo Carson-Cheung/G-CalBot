@@ -4,7 +4,6 @@ import { commandsMap } from './commands';
 import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger } from '../utils/activityLogger';
-import { recordActivityLaunch } from '../utils/session';
 
 export function createBot() {
   const client = new Client({
@@ -29,14 +28,6 @@ export function createBot() {
 
   // Dynamic Command Dispatcher
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (interaction.user) {
-      recordActivityLaunch({
-        userId: interaction.user.id,
-        username: interaction.user.displayName || interaction.user.username,
-        avatarUrl: interaction.user.displayAvatarURL({ size: 128 }),
-      });
-    }
-
     if (!interaction.isChatInputCommand()) return;
 
     let subcommandGroup: string | null = null;

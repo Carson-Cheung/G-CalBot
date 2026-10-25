@@ -8,7 +8,7 @@ import {
 import { ButtonStyle } from "discord-api-types/v10";
 import { config } from "../../config";
 import { COMMAND_NAMES, EMBED_COLORS } from "../const";
-import { createSessionToken, recordActivityLaunch } from "../../utils/session";
+import { createSessionToken } from "../../utils/session";
 
 function buildDashboardCommand(name: string) {
   return new SlashCommandBuilder()
@@ -54,7 +54,6 @@ export const dashboardCommand = {
       avatarUrl: interaction.user.displayAvatarURL({ size: 128 }),
     };
 
-    recordActivityLaunch(userProfile);
     const sessionToken = createSessionToken(userProfile);
     const webDashboardUrl = `${config.publicUrl.replace(/\/$/, '')}/?session=${encodeURIComponent(sessionToken)}`;
 
