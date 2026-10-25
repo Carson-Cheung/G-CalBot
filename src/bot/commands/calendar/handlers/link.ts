@@ -17,7 +17,7 @@ export async function handleLink(
   if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
     return interaction.editReply({
       content:
-        "❌ Invalid URL. Please provide a valid HTTP/HTTPS link to your iCal feed.",
+        "❌ Invalid calendar link or ID. Please provide your Google Calendar Secret iCal URL, Public Embed link, or Calendar ID.",
     });
   }
 

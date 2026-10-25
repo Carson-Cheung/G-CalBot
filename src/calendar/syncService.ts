@@ -4,13 +4,80 @@ import { getTimezoneDayRange } from '../utils/time';
 
 export class CalendarSyncService {
   /**
-   * Cleans up webcal:// to https:// and validates URL format.
+   * Cleans up raw calendar inputs, converting:
+   * - webcal:// to https://
+   * - Google Calendar Embed URLs & iframes to public iCal feeds
+   * - Google Calendar IDs (e.g. Sports, Holidays, Group calendars) to public iCal feeds
    */
   public static sanitizeUrl(url: string): string {
-    let clean = url.trim();
+    let clean = (url || '').trim();
+
+    // 1. If wrapped in an iframe embed snippet: <iframe src="https://..."></iframe>
+    const iframeMatch = clean.match(/src=["']([^"']+)["']/i);
+    if (iframeMatch) {
+      clean = iframeMatch[1].trim();
+    }
+
+    // 2. Normalize webcal:// to https://
     if (clean.startsWith('webcal://')) {
       clean = 'https://' + clean.slice('webcal://'.length);
     }
+
+    // 3. Handle Google Calendar Embed URLs:
+    // e.g. https://calendar.google.com/calendar/embed?src=nba_-m-0bwjj_%2542oston%2B%2543eltics%23sports%40group.v.calendar.google.com&ctz=...
+    if (clean.includes('calendar.google.com') && clean.includes('embed')) {
+      try {
+        const parsed = new URL(clean);
+        const src = parsed.searchParams.get('src');
+        if (src) {
+          return `https://calendar.google.com/calendar/ical/${encodeURIComponent(src)}/public/basic.ics`;
+        }
+      } catch {
+        const srcMatch = clean.match(/[?&]src=([^&]+)/i);
+        if (srcMatch) {
+          const decoded = decodeURIComponent(srcMatch[1]);
+          return `https://calendar.google.com/calendar/ical/${encodeURIComponent(decoded)}/public/basic.ics`;
+        }
+      }
+    }
+
+    // 4. Handle Google Calendar CID share links:
+    // e.g. https://calendar.google.com/calendar/r?cid=...
+    if (clean.includes('calendar.google.com') && clean.includes('cid=')) {
+      try {
+        const parsed = new URL(clean);
+        const cid = parsed.searchParams.get('cid');
+        if (cid) {
+          let decodedCid = cid;
+          try {
+            if (!cid.includes('@') && /^[A-Za-z0-9+/=]+$/.test(cid)) {
+              const b64 = Buffer.from(cid, 'base64').toString('utf-8');
+              if (b64.includes('@') || b64.includes('.')) {
+                decodedCid = b64;
+              }
+            }
+          } catch {}
+          return `https://calendar.google.com/calendar/ical/${encodeURIComponent(decodedCid)}/public/basic.ics`;
+        }
+      } catch {}
+    }
+
+    // 5. Handle raw Google Calendar IDs pasted directly:
+    // e.g. nba_-m-0bwjj_%42oston+%43eltics#sports@group.v.calendar.google.com
+    // or en.canadian#holiday@group.v.calendar.google.com
+    // or c_...#sports@group.v.calendar.google.com
+    // or any calendar ID containing @group.calendar.google.com or @group.v.calendar.google.com
+    if (
+      !clean.startsWith('http://') &&
+      !clean.startsWith('https://') &&
+      (clean.includes('@group.v.calendar.google.com') ||
+       clean.includes('@group.calendar.google.com') ||
+       clean.includes('@import.calendar.google.com') ||
+       clean.endsWith('calendar.google.com'))
+    ) {
+      return `https://calendar.google.com/calendar/ical/${encodeURIComponent(clean)}/public/basic.ics`;
+    }
+
     return clean;
   }
 
@@ -81,6 +148,11 @@ export class CalendarSyncService {
     }
 
     const icsData = await response.text();
+    if (!icsData.includes('BEGIN:VCALENDAR')) {
+      throw new Error(
+        'The provided link or ID did not return a valid iCalendar (.ics) stream. Make sure the calendar is public or use your secret iCal address.'
+      );
+    }
     const parsed = nodeIcal.sync.parseICS(icsData);
 
     const now = new Date();

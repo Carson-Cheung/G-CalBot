@@ -767,7 +767,7 @@ export const App: React.FC = () => {
   const handleAddCalendar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIcalUrl.trim()) {
-      setAddCalError('Please provide your secret Google Calendar iCal link');
+      setAddCalError('Please provide a Google Calendar iCal URL, Public Embed link, or Calendar ID');
       return;
     }
     setAddCalError(null);
@@ -798,7 +798,7 @@ export const App: React.FC = () => {
       await fetchCalendarData(false);
       setActiveTab('schedule');
     } catch (err: any) {
-      setAddCalError(err.message || 'Could not validate calendar URL. Make sure it is the secret address.');
+      setAddCalError(err.message || 'Could not validate calendar URL or ID. Check the link or ID and try again.');
     } finally {
       setIsAddingCal(false);
     }
@@ -1577,6 +1577,13 @@ export const App: React.FC = () => {
                   </li>
                 </ol>
 
+                <div className="tip-note-box mt-3 p-3 rounded-lg bg-white/5 border border-white/10 text-xs text-text-muted">
+                  <span className="font-semibold text-emerald-400">💡 Sports &amp; Public Calendars (e.g. Boston Celtics, Formula 1):</span>
+                  <p className="mt-1">
+                    If Google only shows <strong>"Calendar ID"</strong> or <strong>"Public URL to this calendar"</strong> without a secret address, you can paste either the <strong>Calendar ID</strong> (e.g. <code>nba_...#sports@group.v.calendar.google.com</code>) or the <strong>Public URL</strong> directly!
+                  </p>
+                </div>
+
                 <div className="privacy-guarantee-note">
                   <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
                   <p>
@@ -1613,18 +1620,18 @@ export const App: React.FC = () => {
 
                 <div className="form-field-group">
                   <label htmlFor="calUrlInput" className="form-label">
-                    Secret iCal URL <span className="text-danger">*</span>
+                    Secret iCal URL or Calendar ID <span className="text-danger">*</span>
                   </label>
                   <input
                     id="calUrlInput"
-                    type="url"
+                    type="text"
                     required
                     className={`form-input ${addCalError ? 'input-error' : ''}`}
-                    placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
+                    placeholder="Secret iCal URL, Public URL, or Google Calendar ID"
                     value={newIcalUrl}
                     onChange={e => setNewIcalUrl(e.target.value)}
                   />
-                  <span className="field-hint">Must begin with https:// or webcal://</span>
+                  <span className="field-hint">Accepts Secret iCal URLs, Google Calendar IDs, Public URLs, and Embed codes</span>
                 </div>
 
                 {addCalError && (

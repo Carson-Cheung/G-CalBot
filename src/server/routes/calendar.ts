@@ -164,7 +164,10 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
     const cleanUrl = CalendarSyncService.sanitizeUrl(icalUrl);
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      return res.status(400).json({ error: 'URL must start with http://, https://, or webcal://' });
+      return res.status(400).json({
+        error:
+          'Invalid calendar URL or ID. Please provide your Google Calendar Secret iCal URL, Public Embed link, or Calendar ID.',
+      });
     }
 
     try {
