@@ -147,7 +147,7 @@ authRouter.post(
     activityLogger.log(
       "system",
       "📱",
-      "Discord Activity launched demo/guest session.                 Was that you? ;)",
+      "Discord Activity launched demo/guest session......................Was that you? ;)",
     );
     return res.json({ authenticated: false });
   },
