@@ -14,6 +14,7 @@ export const config = {
   syncIntervalMinutes: Number.isNaN(parsedSync) ? 5 : parsedSync,
   storagePath: process.env.STORAGE_PATH || path.resolve(process.cwd(), 'data', 'database.json'),
   databaseUrl: process.env.DATABASE_URL || '',
+  ownerUserId: process.env.OWNER_USER_ID || '',
   isDev: process.env.NODE_ENV !== 'production',
 };
 

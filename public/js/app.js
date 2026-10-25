@@ -282,7 +282,11 @@ async function testReminder() {
     const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/test`, { method: 'POST' });
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast('✅ DM sent! Check your Discord direct messages.', true);
+      if (data.isDemo) {
+        showToast('✅ Demo test triggered! A notification DM was sent to the bot owner.', true);
+      } else {
+        showToast('✅ DM sent! Check your Discord direct messages.', true);
+      }
     } else {
       showToast('⚠️ DM failed. Make sure your Discord user privacy allows DMs.', false);
     }

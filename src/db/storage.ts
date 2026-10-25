@@ -34,6 +34,40 @@ class Storage {
     return this.lastActiveUserId;
   }
 
+  private getDefaultDemoUser(): UserCalendarConfig {
+    return {
+      userId: 'demo-user',
+      reminderMinutes: 10,
+      enabled: true,
+      createdAt: '2026-10-20T00:00:00.000Z',
+      updatedAt: '2026-10-20T00:00:00.000Z',
+      calendars: [
+        {
+          id: 'demo_cal_f1',
+          name: 'Formula 1 Schedule (Demo)',
+          url: 'https://f1calendar.com/download/f1-calendar_p1_p2_p3_qualifying_sprint_gp.ics',
+          addedAt: '2026-10-20T00:00:00.000Z',
+        },
+        {
+          id: 'demo_cal_holidays',
+          name: 'Canadian Holidays (Demo)',
+          url: 'https://calendar.google.com/calendar/ical/en.canadian%23holiday%40group.v.calendar.google.com/public/basic.ics',
+          addedAt: '2026-10-20T00:00:00.000Z',
+        },
+      ],
+    };
+  }
+
+  private ensureDemoUser(): UserCalendarConfig {
+    const existing = this.data.users['demo-user'];
+    if (!existing || !existing.calendars || existing.calendars.length === 0) {
+      const demoUser = this.getDefaultDemoUser();
+      this.data.users['demo-user'] = demoUser;
+      return demoUser;
+    }
+    return existing;
+  }
+
   constructor() {
     this.filePath = config.storagePath;
     this.data = {
@@ -118,6 +152,8 @@ class Storage {
         console.error('Failed to parse DATABASE_BACKUP environment variable:', bErr);
       }
     }
+
+    this.ensureDemoUser();
   }
 
   /**
@@ -125,6 +161,7 @@ class Storage {
    * Migrates and merges any local users into Neon PostgreSQL.
    */
   public async initDatabase(): Promise<void> {
+    this.ensureDemoUser();
     if (config.databaseUrl) {
       try {
         this.pool = createPostgresPool(config.databaseUrl);
@@ -217,6 +254,9 @@ class Storage {
   }
 
   public getUser(userId: string): UserCalendarConfig | undefined {
+    if (userId === 'demo-user') {
+      return this.ensureDemoUser();
+    }
     const user = this.data.users[userId];
     if (user && !user.calendars) {
       user.calendars = [];

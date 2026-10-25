@@ -98,6 +98,27 @@ export class ReminderEngine {
     this.cache.delete(userId);
   }
 
+  public async getOwnerUserId(): Promise<string | null> {
+    if (config.ownerUserId) {
+      return config.ownerUserId;
+    }
+    try {
+      const app = await this.client.application?.fetch();
+      const owner: any = app?.owner;
+      if (owner) {
+        if (typeof owner.ownerId === 'string') {
+          return owner.ownerId;
+        }
+        if (typeof owner.id === 'string') {
+          return owner.id;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve Discord application owner:', err);
+    }
+    return null;
+  }
+
   private async checkReminders() {
     if (this.isChecking || !this.client.isReady()) return;
     this.isChecking = true;
@@ -107,6 +128,7 @@ export class ReminderEngine {
       const now = Date.now();
 
       for (const user of users) {
+        if (user.userId === 'demo-user') continue;
         const hasCalendars =
           (user.calendars && user.calendars.length > 0) || Boolean(user.icalUrl);
         if (!user.enabled || !hasCalendars) continue;

@@ -66,6 +66,31 @@ async function runMigration(): Promise<void> {
       }
     }
 
+    // 3. Ensure demo-user is always present in Neon PostgreSQL
+    if (!usersToMigrate['demo-user']) {
+      usersToMigrate['demo-user'] = {
+        userId: 'demo-user',
+        reminderMinutes: 10,
+        enabled: true,
+        createdAt: '2026-10-20T00:00:00.000Z',
+        updatedAt: '2026-10-20T00:00:00.000Z',
+        calendars: [
+          {
+            id: 'demo_cal_f1',
+            name: 'Formula 1 Schedule (Demo)',
+            url: 'https://f1calendar.com/download/f1-calendar_p1_p2_p3_qualifying_sprint_gp.ics',
+            addedAt: '2026-10-20T00:00:00.000Z',
+          },
+          {
+            id: 'demo_cal_holidays',
+            name: 'Canadian Holidays (Demo)',
+            url: 'https://calendar.google.com/calendar/ical/en.canadian%23holiday%40group.v.calendar.google.com/public/basic.ics',
+            addedAt: '2026-10-20T00:00:00.000Z',
+          },
+        ],
+      };
+    }
+
     // Normalize calendars and upsert each user to Neon PostgreSQL
     console.log(
       `🔄 Migrating ${Object.keys(usersToMigrate).length} user(s) to Neon PostgreSQL...`

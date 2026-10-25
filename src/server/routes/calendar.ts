@@ -1,23 +1,16 @@
 import { Router, Request, Response } from 'express';
+import { config } from '../../config';
 import { storage } from '../../db/storage';
 import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { isValidTimezone, isValid24HourTime } from '../../utils/time';
 import { activityLogger } from '../../utils/activityLogger';
 
-function resolveUserId(rawUserId: string): string | null {
-  if (rawUserId && rawUserId !== 'demo-user' && rawUserId !== 'undefined' && rawUserId !== 'null') {
+function resolveUserId(rawUserId: string): string {
+  if (rawUserId && rawUserId !== 'undefined' && rawUserId !== 'null') {
     return rawUserId.trim();
   }
-  const lastActive = storage.getLastActiveUser();
-  if (lastActive && storage.getUser(lastActive)) {
-    return lastActive;
-  }
-  const allUsers = storage.getAllUsers();
-  if (allUsers.length > 0) {
-    return allUsers[0].userId;
-  }
-  return null;
+  return 'demo-user';
 }
 
 export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
@@ -216,23 +209,41 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
   // Send a test reminder DM
   router.post('/user/:userId/test', async (req: Request, res: Response) => {
     const userId = resolveUserId(String(req.params.userId));
-    if (!userId) {
+    const isDemo = userId === 'demo-user';
+    const targetDiscordUserId = isDemo
+      ? (await reminderEngine?.getOwnerUserId()) || config.ownerUserId
+      : userId;
+
+    if (!targetDiscordUserId) {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
-    const testEvent = {
-      id: `test_${Date.now()}`,
-      title: '🎉 Google Calendar Reminder Test',
-      description: 'Your Discord calendar alerts are working properly!',
-      location: 'Discord Activity Dashboard',
-      start: new Date(Date.now() + 10 * 60 * 1000),
-      end: new Date(Date.now() + 40 * 60 * 1000),
-      isAllDay: false,
-    };
+
+    const testEvent = isDemo
+      ? {
+          id: `demo_test_${Date.now()}`,
+          title: '🧪 Demo User Test Button Clicked!',
+          description:
+            'Someone just clicked the "🔔 Test DM" button on the public demo-user dashboard!',
+          location: 'G-CalBot Public Demo (demo-user)',
+          start: new Date(Date.now() + 10 * 60 * 1000),
+          end: new Date(Date.now() + 40 * 60 * 1000),
+          isAllDay: false,
+          calendarName: 'Demo Dashboard',
+        }
+      : {
+          id: `test_${Date.now()}`,
+          title: '🎉 Google Calendar Reminder Test',
+          description: 'Your Discord calendar alerts are working properly!',
+          location: 'Discord Activity Dashboard',
+          start: new Date(Date.now() + 10 * 60 * 1000),
+          end: new Date(Date.now() + 40 * 60 * 1000),
+          isAllDay: false,
+        };
 
     const success = reminderEngine
-      ? await reminderEngine.sendReminder(userId, testEvent, 10)
+      ? await reminderEngine.sendReminder(targetDiscordUserId, testEvent, 10)
       : false;
-    res.json({ success });
+    res.json({ success, isDemo });
   });
 
   return router;
