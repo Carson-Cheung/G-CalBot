@@ -563,30 +563,36 @@ export const App: React.FC = () => {
               }
 
               const clientId = resolvedClientId;
-              const requestCode = async (promptMode?: 'none') => {
-                const authCall = sdk.commands.authorize({
+              let code: string | null = null;
+
+              try {
+                // Step A: Fast silent check (resolves in ~20ms if user already authorized in Discord)
+                const silentCall = sdk.commands.authorize({
                   client_id: clientId,
                   response_type: 'code',
                   state: '',
-                  ...(promptMode ? { prompt: promptMode } : {}),
+                  prompt: 'none',
                   scope: ['identify'],
                 });
-                // For silent auth ('none'), timeout quickly so UI does not hang.
-                // For interactive prompt modal, give user up to 60s to click Discord's Authorize button!
-                const timeoutMs = promptMode === 'none' ? 2000 : 60000;
-                const authTimeout = new Promise<{ code: string }>((_, reject) =>
-                  setTimeout(() => reject(new Error('DiscordSDK authorize timeout')), timeoutMs)
+                const silentTimeout = new Promise<{ code: string }>((_, reject) =>
+                  setTimeout(() => reject(new Error('Silent check skipped')), 2000)
                 );
-                return Promise.race([authCall, authTimeout]);
-              };
-
-              let code: string | null = null;
-              try {
-                const resSilent = await requestCode('none');
+                const resSilent = await Promise.race([silentCall, silentTimeout]);
                 code = resSilent.code;
               } catch {
-                const resInteractive = await requestCode();
-                code = resInteractive.code;
+                // Step B: User interaction required — wait directly on Discord for the user's answer (no artificial timeout)
+                try {
+                  const resInteractive = await sdk.commands.authorize({
+                    client_id: clientId,
+                    response_type: 'code',
+                    state: '',
+                    scope: ['identify'],
+                  });
+                  code = resInteractive.code;
+                } catch (interactiveErr) {
+                  // User explicitly clicked "Cancel" or dismissed the Discord authorization dialog
+                  console.info('User dismissed Discord authorization modal:', interactiveErr);
+                }
               }
 
               if (code) {
