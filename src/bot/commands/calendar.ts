@@ -155,7 +155,8 @@ export const calendarCommand = {
         .setDescription(
           "Your link is completely private. Only the bot reads it to schedule your reminders.\n" +
             "No other Discord members or server admins will ever see your email or private calendar URL.\n\n" +
-            "⚠️ **Disclaimer:** Information contained within calendar entries (such as event titles, descriptions, and locations) can be visible in Discord reminders and embeds—please keep this in mind when using public commands like `/cal share`.",
+            "⚠️ **Disclaimer:** Information contained within calendar entries (such as event titles, descriptions, and locations) can be visible in Discord reminders and embeds.\n" +
+            "Please keep this in mind when using public commands like `/cal share`.",
         )
         .addFields(
           {
@@ -492,7 +493,11 @@ export const calendarCommand = {
       } else if (until.match(/^(\d+)\s*d/)) {
         const days = parseInt(until.match(/^(\d+)/)![1], 10);
         const cappedDays = Math.min(Math.max(days, 1), 60);
-        cutoff = CalendarSyncService.getTimezoneDayRange(now, cappedDays, tz).end;
+        cutoff = CalendarSyncService.getTimezoneDayRange(
+          now,
+          cappedDays,
+          tz,
+        ).end;
         timeLabel = "Next " + cappedDays + " day(s)";
         windowDays = cappedDays;
       } else {
@@ -501,7 +506,11 @@ export const calendarCommand = {
         windowDays = 3;
       }
 
-      const allEvents = await reminderEngine.getUserEvents(user, true, windowDays);
+      const allEvents = await reminderEngine.getUserEvents(
+        user,
+        true,
+        windowDays,
+      );
 
       // only keep events between time range
       const sharedEvents = allEvents.filter(
@@ -512,7 +521,7 @@ export const calendarCommand = {
 
       if (sharedEvents.length === 0) {
         return interaction.editReply({
-          content: `📅 **${interaction.user.displayName}** has no events scheduled for **${timeLabel}** (completely free)!`,
+          content: `📅 **${interaction.user.displayName}** has no events scheduled for **${timeLabel}** (completely free)!\n\n✨ *Like this bot? Get started with \`/cal guide\`!*`,
         });
       }
 
@@ -542,8 +551,14 @@ export const calendarCommand = {
         });
       }
 
+      embed.addFields({
+        name: "✨ Like what you see?",
+        value:
+          "Get started with `/cal guide` to connect your Google Calendar and get personal reminders!",
+      });
+
       embed.setFooter({
-        text: "🔒 Privacy protected: Email & feed URLs are never shared. ⚠️ Keep in mind that calendar entry details (titles, times, locations) are visible to everyone in this channel.",
+        text: "🔒 Privacy Protected: Email & feed URLs are never shared.\n⚠️ Note: Entry details (titles, times, locations) are visible in this channel.",
       });
 
       return interaction.editReply({ embeds: [embed] });
@@ -565,7 +580,9 @@ export const calendarCommand = {
       let updated = false;
       // 1. If user passed a time, validate it (e.g. "8:30" or "08:30")
       if (timeInput) {
-        const timeMatch = timeInput.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+        const timeMatch = timeInput
+          .trim()
+          .match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
         if (timeMatch) {
           const hh = timeMatch[1].padStart(2, "0");
           const mm = timeMatch[2];
