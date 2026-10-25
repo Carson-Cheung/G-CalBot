@@ -4,7 +4,6 @@ import { commandsMap } from './commands';
 import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger } from '../utils/activityLogger';
-import { storage } from '../db/storage';
 
 export function createBot() {
   const client = new Client({
@@ -29,9 +28,6 @@ export function createBot() {
 
   // Dynamic Command Dispatcher
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (interaction.user?.id) {
-      storage.setLastActiveUser(interaction.user.id);
-    }
     if (!interaction.isChatInputCommand()) return;
 
     let subcommandGroup: string | null = null;

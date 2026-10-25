@@ -6,21 +6,30 @@ let currentUserId = 'demo-user';
 let unlinkConfirmActive = false;
 let unlinkConfirmTimer = null;
 let toastTimer = null;
+let lastCalendarData = null;
+
+const CALENDAR_COLORS = [
+  '#4285f4', // Google Blue
+  '#5865f2', // Discord Blurple
+  '#23a55a', // Success Green
+  '#f0b232', // Amber Yellow
+  '#eb459e'  // Fuchsia Pink
+];
 
 /* ==========================================================================
-   Toast & UI Helpers
+   Toast & Formatting Helpers
    ========================================================================== */
 
 function showToast(msg, isSuccess = true) {
   const toast = document.getElementById('toast');
   if (!toast) return;
+
   toast.textContent = msg;
-  toast.style.borderColor = isSuccess ? 'var(--success)' : 'var(--danger)';
-  toast.style.color = isSuccess ? 'var(--text-header)' : '#ff7b72';
-  toast.style.display = 'block';
+  toast.className = `toast toast-visible ${isSuccess ? 'toast-success' : 'toast-error'}`;
+
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
-    toast.style.display = 'none';
+    toast.className = 'toast';
   }, 4500);
 }
 
@@ -32,6 +41,132 @@ function escapeHtml(str) {
     '"': '&quot;',
     "'": '&#39;'
   })[m]);
+}
+
+function getCalendarColorClass(calName, knownCalendars = []) {
+  if (!calName) return 'cal-color-0';
+
+  if (Array.isArray(knownCalendars) && knownCalendars.length > 0) {
+    const idx = knownCalendars.findIndex(
+      (c) => (c.name || '').trim().toLowerCase() === calName.trim().toLowerCase()
+    );
+    if (idx !== -1) {
+      return `cal-color-${idx % CALENDAR_COLORS.length}`;
+    }
+  }
+
+  // Fallback deterministic string hash
+  let hash = 0;
+  for (let i = 0; i < calName.length; i++) {
+    hash = (hash << 5) - hash + calName.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % CALENDAR_COLORS.length;
+  return `cal-color-${idx}`;
+}
+
+function getRelativeTimeInfo(startDate, endDate, isAllDay) {
+  const now = new Date();
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffMs = start.getTime() - now.getTime();
+
+  if (now >= start && now <= end) {
+    return { text: 'Now', className: 'badge-rel-urgent' };
+  }
+
+  const todayStr = now.toDateString();
+  const startStr = start.toDateString();
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const tomorrowStr = tomorrow.toDateString();
+
+  if (isAllDay && startStr === todayStr) {
+    return { text: 'Today', className: 'badge-rel-today' };
+  }
+
+  if (startStr === todayStr) {
+    if (diffMs > 0 && diffMs < 3600000) {
+      const mins = Math.max(1, Math.round(diffMs / 60000));
+      return { text: `In ${mins}m`, className: 'badge-rel-urgent' };
+    }
+    if (diffMs > 0 && diffMs < 12 * 3600000) {
+      const hours = Math.round(diffMs / 3600000);
+      return { text: `In ${hours}h`, className: 'badge-rel-today' };
+    }
+    return { text: 'Today', className: 'badge-rel-today' };
+  }
+
+  if (startStr === tomorrowStr) {
+    return { text: 'Tomorrow', className: 'badge-rel-tomorrow' };
+  }
+
+  if (diffMs > 0) {
+    const diffDays = Math.ceil(diffMs / (24 * 3600000));
+    return { text: `In ${diffDays}d`, className: 'badge-rel-future' };
+  }
+
+  return { text: isAllDay ? 'All Day' : 'Passed', className: 'badge-rel-muted' };
+}
+
+/* ==========================================================================
+   UI Updates: KPIs & Account Switcher
+   ========================================================================== */
+
+function updateAccountSwitcherUI() {
+  const userField = document.getElementById('customUserId');
+  if (userField && userField.value !== currentUserId) {
+    userField.value = currentUserId;
+  }
+
+  const demoPill = document.getElementById('demoPill');
+  const resetDemoBtn = document.getElementById('resetDemoBtn');
+
+  if (demoPill) {
+    if (currentUserId === 'demo-user') {
+      demoPill.textContent = 'DEMO PREVIEW';
+      demoPill.className = 'pill pill-demo';
+    } else {
+      demoPill.textContent = 'CUSTOM USER';
+      demoPill.className = 'pill pill-custom';
+    }
+  }
+
+  if (resetDemoBtn) {
+    if (currentUserId === 'demo-user') {
+      resetDemoBtn.classList.add('hidden');
+    } else {
+      resetDemoBtn.classList.remove('hidden');
+    }
+  }
+}
+
+function updateKpis(data) {
+  const statCalendars = document.getElementById('statCalendars');
+  const statEvents = document.getElementById('statEvents');
+  const statAlerts = document.getElementById('statAlerts');
+
+  if (statCalendars) {
+    if (data && data.linked) {
+      const count = (data.calendars && data.calendars.length) || 1;
+      statCalendars.textContent = `${count} ${count === 1 ? 'Feed' : 'Feeds'}`;
+    } else {
+      statCalendars.textContent = '0 Feeds';
+    }
+  }
+
+  if (statEvents) {
+    const count = (data && data.events && data.events.length) || 0;
+    statEvents.textContent = `${count} ${count === 1 ? 'Event' : 'Events'}`;
+  }
+
+  if (statAlerts) {
+    const lead = (data && data.reminderMinutes !== undefined) ? Number(data.reminderMinutes) : 10;
+    const leadStr = lead === 0 ? '0m prior' : `${lead}m prior`;
+    const digestStr = (data && data.dailyDigestEnabled) ? (data.dailyDigestTime || '08:00') : 'Daily Off';
+    statAlerts.textContent = `${leadStr} • ${digestStr}`;
+  }
 }
 
 /* ==========================================================================
@@ -49,12 +184,13 @@ async function loadCalendar(showFeedback = false) {
     const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/calendar`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    lastCalendarData = data;
 
     if (data.userId) {
       currentUserId = data.userId;
-      const userField = document.getElementById('customUserId');
-      if (userField) userField.value = data.userId;
     }
+    updateAccountSwitcherUI();
+    updateKpis(data);
 
     const badge = document.getElementById('statusBadge');
     const unlinkBtn = document.getElementById('unlinkBtn');
@@ -65,41 +201,84 @@ async function loadCalendar(showFeedback = false) {
     if (data.linked) {
       const calCount = (data.calendars && data.calendars.length) || 1;
       badge.className = 'badge badge-success';
-      badge.textContent = `${calCount} Active Calendar(s)`;
-      unlinkBtn.style.display = 'inline-flex';
-      unlinkBtn.textContent = 'Unlink All';
+      badge.textContent = `${calCount} Connected`;
+
+      if (unlinkBtn) {
+        unlinkBtn.classList.remove('hidden');
+        unlinkBtn.textContent = 'Unlink All';
+      }
       unlinkConfirmActive = false;
-      saveBtn.textContent = '➕ Add Calendar';
+
+      if (saveBtn) {
+        saveBtn.textContent = '➕ Add Calendar';
+      }
 
       if (data.reminderMinutes !== undefined) {
-        document.getElementById('leadMinutes').value = String(data.reminderMinutes);
+        const leadSelect = document.getElementById('leadMinutes');
+        if (leadSelect) leadSelect.value = String(data.reminderMinutes);
+      }
+
+      if (data.timezone) {
+        const tzSelect = document.getElementById('timezoneSelect');
+        if (tzSelect) {
+          const exists = Array.from(tzSelect.options).some((opt) => opt.value === data.timezone);
+          if (!exists) {
+            const customOpt = document.createElement('option');
+            customOpt.value = data.timezone;
+            customOpt.textContent = `${data.timezone} (Custom)`;
+            tzSelect.appendChild(customOpt);
+          }
+          tzSelect.value = data.timezone;
+        }
+      }
+
+      if (data.dailyDigestEnabled !== undefined) {
+        const digestToggle = document.getElementById('dailyDigestToggle');
+        if (digestToggle) digestToggle.checked = Boolean(data.dailyDigestEnabled);
+      }
+
+      if (data.dailyDigestTime) {
+        const digestTimeInput = document.getElementById('dailyDigestTime');
+        if (digestTimeInput) digestTimeInput.value = data.dailyDigestTime;
       }
 
       if (data.calendars && data.calendars.length > 0) {
-        calBox.style.display = 'block';
-        calList.innerHTML = data.calendars.map((c) => `
-          <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);">
-            <span style="font-size: 0.88rem; font-weight: 500;">📅 ${escapeHtml(c.name)}</span>
-            <button type="button" class="btn btn-danger btn-remove-cal" data-cal-id="${escapeHtml(c.id)}" style="padding: 4px 10px; font-size: 0.75rem; cursor: pointer;">Remove</button>
-          </div>
-        `).join('');
+        calBox.classList.remove('hidden');
+        calList.innerHTML = data.calendars.map((c) => {
+          const colorClass = getCalendarColorClass(c.name, data.calendars);
+          return `
+            <div class="cal-item ${colorClass}">
+              <div class="cal-item-info">
+                <div class="cal-dot"></div>
+                <span class="cal-name">${escapeHtml(c.name)}</span>
+              </div>
+              <button type="button" class="btn btn-danger btn-remove-cal" data-cal-id="${escapeHtml(c.id)}">Remove</button>
+            </div>
+          `;
+        }).join('');
       } else {
-        calBox.style.display = 'none';
+        calBox.classList.add('hidden');
         calList.innerHTML = '';
       }
 
-      renderEvents(data.events || []);
+      renderEvents(data.events || [], data.calendars || []);
       if (showFeedback) {
         showToast(`Refreshed! Found ${(data.events || []).length} upcoming events.`, true);
       }
     } else {
       badge.className = 'badge badge-unlinked';
       badge.textContent = 'Not Linked';
-      calBox.style.display = 'none';
+      calBox.classList.add('hidden');
       calList.innerHTML = '';
-      unlinkBtn.style.display = 'none';
-      saveBtn.textContent = '🔗 Connect Calendar';
-      renderEvents([]);
+      if (unlinkBtn) unlinkBtn.classList.add('hidden');
+      if (saveBtn) saveBtn.textContent = '🔗 Connect Calendar';
+
+      if (data.reminderMinutes !== undefined) {
+        const leadSelect = document.getElementById('leadMinutes');
+        if (leadSelect) leadSelect.value = String(data.reminderMinutes);
+      }
+
+      renderEvents([], []);
       if (showFeedback) {
         showToast('No active calendar linked.', false);
       }
@@ -117,12 +296,13 @@ async function loadCalendar(showFeedback = false) {
   }
 }
 
-function renderEvents(events) {
+function renderEvents(events, knownCalendars = []) {
   const container = document.getElementById('eventsList');
   if (!events || events.length === 0) {
     container.innerHTML = `
-      <div style="color: var(--text-muted); font-size: 0.85rem; padding: 12px 0;">
-        No upcoming events found in the next 7 days.
+      <div class="empty-state">
+        <div class="empty-icon">🗓️</div>
+        <div>No upcoming events found in the next 7 days.</div>
       </div>`;
     return;
   }
@@ -130,29 +310,47 @@ function renderEvents(events) {
   container.innerHTML = events.slice(0, 10).map((ev) => {
     const start = new Date(ev.start);
     const end = new Date(ev.end);
+    const colorClass = getCalendarColorClass(ev.calendarName, knownCalendars);
+    const rel = getRelativeTimeInfo(ev.start, ev.end, ev.isAllDay);
+
+    const monthStr = start.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const dayNum = start.getDate();
+    const weekdayStr = start.toLocaleDateString('en-US', { weekday: 'short' });
+
     const timeStr = ev.isAllDay
-      ? start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' (All Day)'
-      : `${start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      ? `${weekdayStr}, ${monthStr} ${dayNum} • All Day`
+      : `${weekdayStr}, ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 
     const calBadge = ev.calendarName
-      ? `<span style="font-size: 0.72rem; background: rgba(88,101,242,0.15); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 8px;">${escapeHtml(ev.calendarName)}</span>`
+      ? `<span class="badge-cal">${escapeHtml(ev.calendarName)}</span>`
       : '';
 
     return `
-      <div class="event-item">
-        <div class="event-title">${escapeHtml(ev.title)}${calBadge}</div>
-        <div class="event-meta">
-          <span>⏰ ${timeStr}</span>
-          ${ev.location ? `<span>📍 ${escapeHtml(ev.location)}</span>` : ''}
+      <div class="event-item ${colorClass}">
+        <div class="event-date-box">
+          <div class="date-month">${monthStr}</div>
+          <div class="date-day">${dayNum}</div>
+          <div class="date-weekday">${weekdayStr}</div>
         </div>
-        ${ev.description ? `<div style="font-size: 0.8rem; color: var(--text-normal); margin-top: 6px; line-height: 1.4;">${escapeHtml(ev.description)}</div>` : ''}
+        <div class="event-body">
+          <div class="event-top-row">
+            <span class="event-title">${escapeHtml(ev.title)}</span>
+            ${calBadge}
+            <span class="badge-rel ${rel.className}">${rel.text}</span>
+          </div>
+          <div class="event-meta">
+            <span>⏰ ${timeStr}</span>
+            ${ev.location ? `<span>📍 ${escapeHtml(ev.location)}</span>` : ''}
+          </div>
+          ${ev.description ? `<div class="event-desc">${escapeHtml(ev.description)}</div>` : ''}
+        </div>
       </div>
     `;
   }).join('');
 }
 
 /* ==========================================================================
-   Calendar Management Operations
+   Calendar & Preferences Management
    ========================================================================== */
 
 async function unlinkSingleCalendar(calendarId, btn) {
@@ -266,6 +464,53 @@ async function unlinkCalendar() {
   }
 }
 
+async function savePreferences() {
+  const saveBtn = document.getElementById('saveSettingsBtn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+  }
+
+  const reminderMinutes = parseInt(document.getElementById('leadMinutes').value, 10);
+  const timezone = document.getElementById('timezoneSelect').value;
+  const dailyDigestEnabled = document.getElementById('dailyDigestToggle').checked;
+  const dailyDigestTime = document.getElementById('dailyDigestTime').value || '08:00';
+
+  try {
+    const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reminderMinutes,
+        timezone,
+        dailyDigestEnabled,
+        dailyDigestTime
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('Preferences saved successfully!', true);
+      if (lastCalendarData) {
+        lastCalendarData.reminderMinutes = reminderMinutes;
+        lastCalendarData.timezone = timezone;
+        lastCalendarData.dailyDigestEnabled = dailyDigestEnabled;
+        lastCalendarData.dailyDigestTime = dailyDigestTime;
+        updateKpis(lastCalendarData);
+      }
+    } else {
+      showToast(`Failed to save preferences: ${data.error || 'Server error'}`, false);
+    }
+  } catch (err) {
+    console.error('Save preferences error:', err);
+    showToast('Network error while saving preferences.', false);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 Save Preferences';
+    }
+  }
+}
+
 /* ==========================================================================
    Test Reminders & Dev Account Switcher
    ========================================================================== */
@@ -306,8 +551,18 @@ function reloadForUser() {
   const val = input.value.trim();
   if (val) {
     currentUserId = val;
+    updateAccountSwitcherUI();
     loadCalendar(true);
   }
+}
+
+function resetToDemo() {
+  currentUserId = 'demo-user';
+  const input = document.getElementById('customUserId');
+  if (input) input.value = 'demo-user';
+  updateAccountSwitcherUI();
+  loadCalendar(true);
+  showToast('Switched to Demo User preview.', true);
 }
 
 /* ==========================================================================
@@ -321,6 +576,8 @@ function initEvents() {
   document.getElementById('testBtn')?.addEventListener('click', testReminder);
   document.getElementById('refreshBtn')?.addEventListener('click', () => loadCalendar(true));
   document.getElementById('switchUserBtn')?.addEventListener('click', reloadForUser);
+  document.getElementById('resetDemoBtn')?.addEventListener('click', resetToDemo);
+  document.getElementById('saveSettingsBtn')?.addEventListener('click', savePreferences);
 
   // Delegated click listener for dynamic Remove buttons
   const connectedList = document.getElementById('connectedList');
@@ -343,25 +600,6 @@ function initEvents() {
   document.getElementById('icalInput')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') saveCalendar();
   });
-
-  // Lead time dropdown change listener
-  document.getElementById('leadMinutes')?.addEventListener('change', async (e) => {
-    const reminderMinutes = parseInt(e.target.value, 10);
-    try {
-      const res = await fetch(`/api/user/${encodeURIComponent(currentUserId)}/settings`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reminderMinutes })
-      });
-      if (res.ok) {
-        showToast(`Alert timing updated to ${reminderMinutes} minutes before start!`, true);
-      } else {
-        showToast('Failed to update alert timing.', false);
-      }
-    } catch (err) {
-      showToast('Failed to update alert timing.', false);
-    }
-  });
 }
 
 /* ==========================================================================
@@ -380,7 +618,7 @@ async function initDiscord() {
 
     // Hide dev switcher when running inside Discord Activity
     const devBar = document.getElementById('devBar');
-    if (devBar) devBar.style.display = 'none';
+    if (devBar) devBar.classList.add('hidden');
 
     // Resolve Client ID
     let clientId = urlParams.get('client_id');
@@ -434,8 +672,7 @@ async function initDiscord() {
 
     if (authenticatedUserId && authenticatedUserId !== currentUserId) {
       currentUserId = authenticatedUserId;
-      const userField = document.getElementById('customUserId');
-      if (userField) userField.value = authenticatedUserId;
+      updateAccountSwitcherUI();
       await loadCalendar();
     }
   } catch (err) {
@@ -453,8 +690,11 @@ window.saveCalendar = saveCalendar;
 window.unlinkCalendar = unlinkCalendar;
 window.testReminder = testReminder;
 window.reloadForUser = reloadForUser;
+window.resetToDemo = resetToDemo;
+window.savePreferences = savePreferences;
 
 // Initialize immediately
 initEvents();
+updateAccountSwitcherUI();
 loadCalendar();
 initDiscord();

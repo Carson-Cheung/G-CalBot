@@ -52,22 +52,8 @@ export class CalendarSyncService {
     const cleanUrl = this.sanitizeUrl(icalUrl);
 
     // Validate URL and prevent SSRF to internal/loopback addresses
-    try {
-      const parsedUrl = new URL(cleanUrl);
-      const host = parsedUrl.hostname.toLowerCase();
-      if (
-        host === 'localhost' ||
-        host === '127.0.0.1' ||
-        host === '0.0.0.0' ||
-        host === '::1' ||
-        host === '169.254.169.254' ||
-        host.endsWith('.local') ||
-        host.endsWith('.internal')
-      ) {
-        throw new Error('Access to private or local network hosts is not permitted.');
-      }
-    } catch (urlErr: any) {
-      throw new Error(`Invalid calendar URL: ${urlErr.message}`);
+    if (!CalendarSyncService.isSafeFeedUrl(cleanUrl)) {
+      throw new Error('Invalid calendar URL or access to private/local network hosts is not permitted.');
     }
 
     // Fetch the raw iCalendar data with a 10-second timeout
@@ -123,9 +109,11 @@ export class CalendarSyncService {
             if (item.exdate) {
               for (const exDateKey in item.exdate) {
                 const ex = new Date(exDateKey);
-                if (ex.toISOString().split('T')[0] === dateStr) {
-                  isException = true;
-                  break;
+                if (!isNaN(ex.getTime())) {
+                  if (ex.toISOString().split('T')[0] === dateStr) {
+                    isException = true;
+                    break;
+                  }
                 }
               }
             }

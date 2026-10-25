@@ -157,12 +157,18 @@ export class ReminderEngine {
               );
 
               if (!alreadySent) {
-                await this.sendReminder(user.userId, event, reminderLeadMinutes);
-                storage.markReminderSent(
+                const sent = await this.sendReminder(
                   user.userId,
-                  event.id,
+                  event,
                   reminderLeadMinutes
                 );
+                if (sent) {
+                  storage.markReminderSent(
+                    user.userId,
+                    event.id,
+                    reminderLeadMinutes
+                  );
+                }
               }
             }
           }
@@ -349,7 +355,7 @@ export class ReminderEngine {
       const now = new Date();
       const currentTimeStr = now.toLocaleTimeString('en-US', {
         timeZone: tz,
-        hour12: false,
+        hourCycle: 'h23',
         hour: '2-digit',
         minute: '2-digit',
       });
@@ -359,9 +365,11 @@ export class ReminderEngine {
         currentTimeStr >= targetTime &&
         user.lastDailyDigestDate !== todayDateStr
       ) {
-        user.lastDailyDigestDate = todayDateStr;
-        storage.saveUser(user);
-        await this.sendDailyDigest(user.userId, false);
+        const sent = await this.sendDailyDigest(user.userId, false);
+        if (sent) {
+          user.lastDailyDigestDate = todayDateStr;
+          storage.saveUser(user);
+        }
       }
     } catch (err) {
       console.error(`Error checking daily digest for user ${user.userId}:`, err);

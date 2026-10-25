@@ -5,6 +5,7 @@ import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { isValidTimezone, isValid24HourTime } from '../../utils/time';
 import { activityLogger } from '../../utils/activityLogger';
+import { UserCalendarConfig } from '../../types';
 
 function resolveUserId(rawUserId: string): string {
   if (rawUserId && rawUserId !== 'undefined' && rawUserId !== 'null') {
@@ -49,6 +50,10 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       return res.json({
         linked: false,
         reminderMinutes: 10,
+        enabled: true,
+        timezone: 'America/New_York',
+        dailyDigestEnabled: false,
+        dailyDigestTime: '08:00',
         calendars: [],
         events: [],
       });
@@ -60,6 +65,10 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       return res.json({
         linked: false,
         reminderMinutes: 10,
+        enabled: true,
+        timezone: 'America/New_York',
+        dailyDigestEnabled: false,
+        dailyDigestTime: '08:00',
         calendars: [],
         events: [],
       });
@@ -72,6 +81,9 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
         reminderMinutes: user.reminderMinutes,
         enabled: user.enabled,
         userId: user.userId,
+        timezone: user.timezone || 'America/New_York',
+        dailyDigestEnabled: Boolean(user.dailyDigestEnabled),
+        dailyDigestTime: user.dailyDigestTime || '08:00',
         calendars: user.calendars || [],
         events: events.map((e) => ({
           id: e.id,
@@ -154,7 +166,7 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     if (calendarId) {
       removed = storage.removeCalendar(userId, calendarId);
     } else {
-      removed = storage.deleteUser(userId);
+      removed = storage.removeCalendar(userId, 'all');
     }
 
     reminderEngine?.invalidateUserCache(userId);
@@ -171,10 +183,21 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
     const { reminderMinutes, enabled, timezone, dailyDigestEnabled, dailyDigestTime } = req.body;
-    const user = storage.getUser(userId);
+    let user = storage.getUser(userId);
 
     if (!user) {
-      return res.status(404).json({ error: 'User calendar not found' });
+      const now = new Date().toISOString();
+      user = {
+        userId,
+        calendars: [],
+        reminderMinutes: 10,
+        enabled: true,
+        timezone: 'America/New_York',
+        dailyDigestEnabled: false,
+        dailyDigestTime: '08:00',
+        createdAt: now,
+        updatedAt: now,
+      };
     }
 
     if (reminderMinutes !== undefined) {
@@ -195,7 +218,8 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     }
     if (dailyDigestTime !== undefined && typeof dailyDigestTime === 'string') {
       if (isValid24HourTime(dailyDigestTime)) {
-        user.dailyDigestTime = dailyDigestTime.trim();
+        const [hh, mm] = dailyDigestTime.trim().split(':');
+        user.dailyDigestTime = `${hh.padStart(2, '0')}:${mm}`;
       } else {
         return res.status(400).json({ error: 'dailyDigestTime must be in HH:mm 24-hour format' });
       }

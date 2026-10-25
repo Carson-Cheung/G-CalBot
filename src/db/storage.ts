@@ -22,17 +22,7 @@ class Storage {
   private filePath: string;
   private data: DatabaseSchema;
   private pool: Pool | null = null;
-  private lastActiveUserId: string | null = null;
-
-  public setLastActiveUser(userId: string): void {
-    if (userId) {
-      this.lastActiveUserId = userId;
-    }
-  }
-
-  public getLastActiveUser(): string | null {
-    return this.lastActiveUserId;
-  }
+  private pgWriteChain: Promise<void> = Promise.resolve();
 
   private getDefaultDemoUser(): UserCalendarConfig {
     return {
@@ -305,12 +295,15 @@ class Storage {
     this.persist();
 
     if (this.pool) {
-      upsertUserToPostgres(this.pool, user).catch((err) => {
-        console.error(
-          `Failed to sync user ${user.userId} to Neon PostgreSQL:`,
-          err
-        );
-      });
+      const activePool = this.pool;
+      this.pgWriteChain = this.pgWriteChain
+        .then(() => upsertUserToPostgres(activePool, user))
+        .catch((err) => {
+          console.error(
+            `Failed to sync user ${user.userId} to Neon PostgreSQL:`,
+            err
+          );
+        });
     }
   }
 

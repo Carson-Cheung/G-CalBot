@@ -20,7 +20,7 @@ export function isValidTimezone(tz: string): boolean {
  */
 export function isValid24HourTime(time: string): boolean {
   if (!time || typeof time !== 'string') return false;
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(time.trim());
+  return /^([01]?\d|2[0-3]):([0-5]\d)$/.test(time.trim());
 }
 
 /**
