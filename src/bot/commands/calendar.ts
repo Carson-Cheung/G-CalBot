@@ -173,7 +173,7 @@ export const calendarCommand = {
             value:
               "Scroll down to the **Integrate calendar** section.\n" +
               'Look for **"Secret address in iCal format"** (do NOT use the Public address).\n' +
-              "Click the copy button.",
+              "Click the copy button (Google may show a security prompt—this is normal).",
           },
           {
             name: "Step 4: Link to Bot",
