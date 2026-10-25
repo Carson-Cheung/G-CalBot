@@ -113,12 +113,12 @@ authRouter.post(['/auth/activity-handoff', '/activity-handoff'], (req: Request, 
 
   const recentUser = getRecentActivityLaunch();
   if (recentUser) {
-    activityLogger.log('system', `Discord Activity connected for @${recentUser.username}`);
+    activityLogger.log('system', '📱', `Discord Activity connected for @${recentUser.username}`);
     const sessionToken = createSessionToken(recentUser);
     return res.json({ authenticated: true, sessionToken, user: recentUser });
   }
 
-  activityLogger.log('system', 'Discord Activity launched (demo/guest session)');
+  activityLogger.log('system', '📱', 'Discord Activity launched (demo/guest session)');
   return res.json({ authenticated: false });
 });
 
