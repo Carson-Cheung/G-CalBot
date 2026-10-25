@@ -1,6 +1,6 @@
 import { config } from '../config';
 
-export type ActivityLogType = 'system' | 'command' | 'reminder' | 'warn';
+export type ActivityLogType = 'system' | 'command' | 'reminder' | 'warn' | 'sync';
 
 export interface ActivityLogEntry {
   id: string;

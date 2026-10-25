@@ -108,7 +108,7 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       if (isManualSync) {
         reminderEngine?.invalidateUserCache(userId);
         activityLogger.log(
-          'sync',
+          'system',
           '🔄',
           userId === 'demo-user'
             ? 'Manual calendar sync triggered on Demo Showcase'
@@ -188,7 +188,7 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       reminderEngine?.invalidateUserCache(userId);
 
       activityLogger.log(
-        'sync',
+        'system',
         '📅',
         `Connected calendar feed "${defaultName}" via Activity dashboard (${events.length} events)`
       );
@@ -235,7 +235,7 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     reminderEngine?.invalidateUserCache(userId);
     if (removed) {
       activityLogger.log(
-        'sync',
+        'system',
         '🗑️',
         calendarId
           ? 'Removed a connected calendar feed via Activity dashboard'
