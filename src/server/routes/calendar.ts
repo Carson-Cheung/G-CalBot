@@ -104,7 +104,19 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     }
 
     try {
-      const events = reminderEngine ? await reminderEngine.getUserEvents(user) : [];
+      const isManualSync = req.query.sync === 'true';
+      if (isManualSync) {
+        reminderEngine?.invalidateUserCache(userId);
+        activityLogger.log(
+          'sync',
+          '🔄',
+          userId === 'demo-user'
+            ? 'Manual calendar sync triggered on Demo Showcase'
+            : 'Manual calendar sync triggered from Activity dashboard'
+        );
+      }
+
+      const events = reminderEngine ? await reminderEngine.getUserEvents(user, isManualSync) : [];
       return res.json({
         linked: user.calendars.length > 0 || Boolean(user.icalUrl),
         reminderMinutes: user.reminderMinutes,
@@ -175,6 +187,12 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
       reminderEngine?.invalidateUserCache(userId);
 
+      activityLogger.log(
+        'sync',
+        '📅',
+        `Connected calendar feed "${defaultName}" via Activity dashboard (${events.length} events)`
+      );
+
       const updatedUser = storage.getUser(userId)!;
 
       res.json({
@@ -215,6 +233,15 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     }
 
     reminderEngine?.invalidateUserCache(userId);
+    if (removed) {
+      activityLogger.log(
+        'sync',
+        '🗑️',
+        calendarId
+          ? 'Removed a connected calendar feed via Activity dashboard'
+          : 'Unlinked all calendar feeds via Activity dashboard'
+      );
+    }
     res.json({ success: removed });
   };
 
@@ -280,6 +307,11 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     user.updatedAt = new Date().toISOString();
 
     storage.saveUser(user);
+    activityLogger.log(
+      'system',
+      '⚙️',
+      `Updated alert preferences via Activity dashboard (${user.reminderMinutes}m prior, TZ: ${user.timezone || 'America/New_York'})`
+    );
     res.json({ success: true, user });
   });
 
@@ -322,6 +354,20 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
           end: new Date(Date.now() + 40 * 60 * 1000),
           isAllDay: false,
         };
+
+    if (isDemo) {
+      activityLogger.log(
+        'reminder',
+        '🧪',
+        'Demo Showcase visitor triggered a Test DM alert to bot owner! ;)'
+      );
+    } else {
+      activityLogger.log(
+        'reminder',
+        '🔔',
+        'Triggered manual Test DM alert from Activity dashboard'
+      );
+    }
 
     const success = reminderEngine
       ? await reminderEngine.sendReminder(targetDiscordUserId, testEvent, 10)

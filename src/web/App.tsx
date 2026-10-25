@@ -640,7 +640,7 @@ export const App: React.FC = () => {
       const storedToken = safeStorage.getItem('gcalbot_session');
       if (storedToken) {
         try {
-          const verifyRes = await fetch('/api/auth/session', {
+          const verifyRes = await fetch('/api/auth/session?initial=true', {
             headers: { Authorization: `Bearer ${storedToken}` },
           });
           if (verifyRes.ok) {
@@ -663,6 +663,13 @@ export const App: React.FC = () => {
 
       // Step 4: Default to Public Demo Showcase Mode
       if (!isCancelled) {
+        if (!isInsideDiscord) {
+          fetch('/api/auth/activity-handoff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isDemoLaunch: true }),
+          }).catch(() => {});
+        }
         setUserId('demo-user');
         setIsDemo(true);
         setAuthUser(null);
@@ -689,7 +696,8 @@ export const App: React.FC = () => {
         headers['Authorization'] = `Bearer ${sessionToken}`;
       }
 
-      const res = await fetch(`/api/user/${encodeURIComponent(userId)}/calendar`, { headers });
+      const syncQuery = showToastNotification ? '?sync=true' : '';
+      const res = await fetch(`/api/user/${encodeURIComponent(userId)}/calendar${syncQuery}`, { headers });
       if (!res.ok) throw new Error('Failed to load schedule data');
       const data: UserCalendarData = await res.json();
       setCalendarData(data);
@@ -880,6 +888,11 @@ export const App: React.FC = () => {
     setSessionToken(null);
     setUserId('demo-user');
     setIsDemo(true);
+    fetch('/api/auth/activity-handoff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isDemoLaunch: true }),
+    }).catch(() => {});
     triggerToast('Signed out of personal session. Switched to Public Demo Showcase.', 'info');
   };
 
@@ -893,6 +906,11 @@ export const App: React.FC = () => {
       // Switch to demo mode
       setUserId('demo-user');
       setIsDemo(true);
+      fetch('/api/auth/activity-handoff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDemoLaunch: true }),
+      }).catch(() => {});
       triggerToast('Viewing Public Demo Showcase mode', 'info');
     }
   };

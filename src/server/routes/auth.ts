@@ -95,6 +95,13 @@ authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
 
   const payload = verifySessionToken(token);
   if (payload) {
+    if (req.query.initial === "true") {
+      activityLogger.log(
+        "system",
+        "🌐",
+        `Discord Activity web dashboard connected for the user @${payload.username}`,
+      );
+    }
     return res.json({ authenticated: true, user: payload });
   }
 
@@ -108,7 +115,16 @@ authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
 authRouter.post(
   ["/auth/activity-handoff", "/activity-handoff"],
   (req: Request, res: Response) => {
-    const { frameId, isInsideDiscord } = req.body || {};
+    const { frameId, isInsideDiscord, isDemoLaunch } = req.body || {};
+    if (isDemoLaunch) {
+      activityLogger.log(
+        "system",
+        "📱",
+        "Discord Activity launched demo/guest session.             Was that you? ;)",
+      );
+      return res.json({ authenticated: false });
+    }
+
     if (!frameId && !isInsideDiscord) {
       return res.status(400).json({
         authenticated: false,
