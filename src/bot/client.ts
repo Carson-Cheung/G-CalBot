@@ -3,7 +3,7 @@ import { GatewayIntentBits } from 'discord-api-types/v10';
 import { commandsMap } from './commands';
 import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
-import { activityLogger } from '../utils/activityLogger';
+import { activityLogger, censorUsername } from '../utils/activityLogger';
 
 export function createBot() {
   const client = new Client({
@@ -53,10 +53,13 @@ export function createBot() {
     try {
       const command = commandsMap.get(interaction.commandName);
       if (command && typeof command.execute === 'function') {
+        const userMention = censorUsername(
+          interaction.user.globalName || interaction.user.username
+        );
         activityLogger.log(
           'command',
           '⚡',
-          `Executed slash command: ${commandPath} (${context})`
+          `Executed slash command by ${userMention}: ${commandPath} (${context})`
         );
         await command.execute(interaction, reminderEngine);
       } else {

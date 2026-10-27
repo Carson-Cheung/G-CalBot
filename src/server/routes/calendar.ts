@@ -4,7 +4,7 @@ import { storage } from '../../db/storage';
 import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { isValidTimezone, isValid24HourTime } from '../../utils/time';
-import { activityLogger } from '../../utils/activityLogger';
+import { activityLogger, censorUsername } from '../../utils/activityLogger';
 import { verifySessionToken } from '../../utils/session';
 
 function extractBearerToken(req: Request): string | null {
@@ -391,10 +391,12 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
         'Demo Showcase visitor triggered a Test DM alert to bot owner! ;)'
       );
     } else {
+      const verified = verifySessionToken(extractBearerToken(req));
+      const targetUser = verified?.username ? censorUsername(verified.username) : undefined;
       activityLogger.log(
         'reminder',
         '🔔',
-        'Triggered manual Test DM alert from Activity dashboard'
+        `Triggered manual Test DM alert from Activity dashboard${targetUser ? ` by ${targetUser}` : ''}`
       );
     }
 

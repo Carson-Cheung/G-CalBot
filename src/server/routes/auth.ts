@@ -1,15 +1,9 @@
 import { Router, Request, Response } from "express";
 import { config } from "../../config";
 import { createSessionToken, verifySessionToken } from "../../utils/session";
-import { activityLogger } from "../../utils/activityLogger";
+import { activityLogger, censorUsername } from "../../utils/activityLogger";
 
 export const authRouter = Router();
-
-function maskUsername(name: string): string {
-  if (!name) return "anonymous";
-  if (name.length <= 2) return `${name}***`;
-  return `${name.slice(0, 2)}***${name.slice(-1)}`;
-}
 
 // App public config
 authRouter.get(["/config", "/auth/config"], (_req: Request, res: Response) => {
@@ -76,7 +70,7 @@ authRouter.post("/token", async (req: Request, res: Response) => {
       activityLogger.log(
         "system",
         "📱",
-        `Discord Activity authenticated for @${maskUsername(user.global_name || user.username)}`,
+        `Discord Activity authenticated for ${censorUsername(user.global_name || user.username)}`,
       );
     }
 
@@ -102,7 +96,7 @@ authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
       activityLogger.log(
         "system",
         "🌐",
-        `Discord Activity web dashboard connected for @${maskUsername(payload.username)}`,
+        `Discord Activity web dashboard connected for ${censorUsername(payload.username)}`,
       );
     }
     return res.json({ authenticated: true, user: payload });

@@ -4,7 +4,7 @@ import { storage } from '../db/storage';
 import { CalendarSyncService } from './syncService';
 import { CalendarEvent, UserCalendarConfig } from '../types';
 import { getTimezoneDayRange, isValidTimezone } from '../utils/time';
-import { activityLogger } from '../utils/activityLogger';
+import { activityLogger, censorUsername } from '../utils/activityLogger';
 
 interface CachedEvents {
   lastFetched: number;
@@ -239,10 +239,12 @@ export class ReminderEngine {
 
       await user.send({ embeds: [embed] });
       console.log(`Sent reminder to user ${userId} for event "${event.title}"`);
+      const targetName = user.globalName || user.username || (user as any).displayName || 'User';
+      const censored = censorUsername(targetName);
       activityLogger.log(
         'reminder',
         '🔔',
-        `Dispatched event reminder (${leadMinutes === 0 ? 'starting now' : `${leadMinutes}m before`})`
+        `Dispatched event reminder to ${censored} (${leadMinutes === 0 ? 'starting now' : `${leadMinutes}m before`})`
       );
       return true;
     } catch (err: any) {
@@ -329,10 +331,13 @@ export class ReminderEngine {
       });
       embed.setTimestamp();
       await discordUser.send({ embeds: [embed] });
+      const targetName =
+        discordUser.globalName || discordUser.username || (discordUser as any).displayName || 'User';
+      const censored = censorUsername(targetName);
       activityLogger.log(
         'reminder',
         '📅',
-        `Dispatched daily schedule briefing${isTest ? ' (test)' : ''}`
+        `Dispatched daily schedule briefing to ${censored}${isTest ? ' (test)' : ''}`
       );
       return true;
     } catch (err: any) {
