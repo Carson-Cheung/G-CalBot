@@ -8,8 +8,20 @@ export interface SessionPayload {
   exp: number;
 }
 
+let ephemeralSecret: string | null = null;
+
 function getSecret(): string {
-  return config.clientSecret || config.discordToken || 'gcalbot-fallback-secret';
+  const secret = (config.clientSecret || config.discordToken || '').trim();
+  if (secret) {
+    return secret;
+  }
+  if (!ephemeralSecret) {
+    ephemeralSecret = crypto.randomBytes(32).toString('hex');
+    console.warn(
+      '⚠️ No DISCORD_CLIENT_SECRET or DISCORD_TOKEN configured. Using cryptographically secure in-memory ephemeral secret for session tokens.'
+    );
+  }
+  return ephemeralSecret;
 }
 
 /**

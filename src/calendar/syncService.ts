@@ -1,4 +1,6 @@
 import nodeIcal from 'node-ical';
+import net from 'net';
+import dns from 'dns';
 import { CalendarEvent, LinkedCalendar } from '../types';
 import { getTimezoneDayRange } from '../utils/time';
 
@@ -82,9 +84,64 @@ export class CalendarSyncService {
   }
 
   /**
-   * Validates URL format and prevents SSRF to internal/loopback addresses.
+   * Checks if an IP address belongs to a private, loopback, link-local, or reserved network range.
    */
-  public static isSafeFeedUrl(url: string): boolean {
+  public static isPrivateIp(ip: string): boolean {
+    if (!net.isIP(ip)) return true;
+
+    if (net.isIPv4(ip)) {
+      const parts = ip.split('.').map((p) => parseInt(p, 10));
+      if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) {
+        return true;
+      }
+      // 0.0.0.0/8 (Broadcast/Current network)
+      if (parts[0] === 0) return true;
+      // 10.0.0.0/8 (RFC 1918 Private)
+      if (parts[0] === 10) return true;
+      // 100.64.0.0/10 (RFC 6598 Carrier-Grade NAT)
+      if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+      // 127.0.0.0/8 (Loopback)
+      if (parts[0] === 127) return true;
+      // 169.254.0.0/16 (RFC 3927 Link-Local / Cloud Metadata e.g. AWS/GCP/Azure)
+      if (parts[0] === 169 && parts[1] === 254) return true;
+      // 172.16.0.0/12 (RFC 1918 Private)
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+      // 192.0.0.0/24 (IETF Protocol Assignments) & 192.0.2.0/24 (TEST-NET-1)
+      if (parts[0] === 192 && parts[1] === 0 && (parts[2] === 0 || parts[2] === 2)) return true;
+      // 192.168.0.0/16 (RFC 1918 Private)
+      if (parts[0] === 192 && parts[1] === 168) return true;
+      // 198.18.0.0/15 (Network Benchmark Tests)
+      if (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19)) return true;
+      // 198.51.100.0/24 (TEST-NET-2) & 203.0.113.0/24 (TEST-NET-3)
+      if (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) return true;
+      if (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) return true;
+      // 224.0.0.0/4 (Multicast) & 240.0.0.0/4 (Reserved)
+      if (parts[0] >= 224) return true;
+
+      return false;
+    }
+
+    // IPv6 checks
+    const normalized = ip.toLowerCase();
+    if (normalized === '::1' || normalized === '::') return true;
+    // IPv4-mapped IPv6 (::ffff:127.0.0.1)
+    if (normalized.startsWith('::ffff:')) {
+      const v4Part = normalized.slice(7);
+      if (net.isIPv4(v4Part)) return CalendarSyncService.isPrivateIp(v4Part);
+    }
+    // Unique local (fc00::/7)
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+    // Link-local (fe80::/10)
+    if (/^fe[89ab]/i.test(normalized)) return true;
+
+    return false;
+  }
+
+  /**
+   * Validates URL format and prevents SSRF to internal/loopback/cloud metadata addresses,
+   * resolving hostnames to IPs to protect against DNS rebinding.
+   */
+  public static async isSafeFeedUrl(url: string): Promise<boolean> {
     try {
       const parsedUrl = new URL(url);
       if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
@@ -96,19 +153,39 @@ export class CalendarSyncService {
         host === '0.0.0.0' ||
         host === '::1' ||
         host === '[::1]' ||
-        host === '169.254.169.254' ||
         host.endsWith('.local') ||
         host.endsWith('.internal') ||
-        /^127\./.test(host) ||
-        /^10\./.test(host) ||
-        /^192\.168\./.test(host) ||
-        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-        /^\[?fe80:/i.test(host) ||
-        /^\[?fc00:/i.test(host) ||
-        /^\[?fd00:/i.test(host)
+        host.endsWith('.arpa') ||
+        host.endsWith('.home') ||
+        host.endsWith('.corp') ||
+        host.endsWith('.lan')
       ) {
         return false;
       }
+
+      // If host is a direct IP address, validate it immediately
+      if (net.isIP(host)) {
+        return !CalendarSyncService.isPrivateIp(host);
+      }
+
+      // Check numeric/hex/octal IP evasion (e.g. 2130706433 or 0x7f000001)
+      if (/^[\d.xabcdefABCDEF]+$/.test(host)) {
+        return false;
+      }
+
+      // Resolve DNS to verify that all resolved endpoint IPs are public
+      try {
+        const records = await dns.promises.lookup(host, { all: true });
+        if (!records || records.length === 0) return false;
+        for (const record of records) {
+          if (CalendarSyncService.isPrivateIp(record.address)) {
+            return false;
+          }
+        }
+      } catch {
+        return false;
+      }
+
       return true;
     } catch {
       return false;
@@ -117,6 +194,7 @@ export class CalendarSyncService {
 
   /**
    * Fetches and parses calendar events within a specified date window.
+   * Protects against SSRF redirect bypasses and memory exhaustion.
    */
   public static async fetchUpcomingEvents(
     icalUrl: string,
@@ -125,29 +203,65 @@ export class CalendarSyncService {
   ): Promise<CalendarEvent[]> {
     const cleanUrl = this.sanitizeUrl(icalUrl);
 
-    // Validate URL and prevent SSRF to internal/loopback addresses
-    if (!CalendarSyncService.isSafeFeedUrl(cleanUrl)) {
-      throw new Error('Invalid calendar URL or access to private/local network hosts is not permitted.');
+    // Follow redirects manually to re-verify destination IPs against SSRF at each hop
+    let currentUrl = cleanUrl;
+    let response: Response | null = null;
+    const maxRedirects = 5;
+
+    for (let hop = 0; hop <= maxRedirects; hop++) {
+      if (!(await CalendarSyncService.isSafeFeedUrl(currentUrl))) {
+        throw new Error(
+          'Invalid calendar URL or access to private/local network hosts is not permitted.'
+        );
+      }
+
+      response = await fetch(currentUrl, {
+        signal: AbortSignal.timeout(10000),
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; DiscordGCalBot/1.0)',
+          Accept: 'text/calendar, text/plain, */*',
+        },
+      });
+
+      if (
+        response.status === 301 ||
+        response.status === 302 ||
+        response.status === 303 ||
+        response.status === 307 ||
+        response.status === 308
+      ) {
+        const location = response.headers.get('location');
+        if (!location) {
+          throw new Error('Received redirect without Location header');
+        }
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+
+      break;
     }
 
-    // Fetch the raw iCalendar data with a 10-second timeout
-    const response = await fetch(cleanUrl, {
-      signal: AbortSignal.timeout(10000),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; DiscordGCalBot/1.0)'
-      }
-    });
-
-    if (!response.ok) {
-      if (response.status === 404 || response.status === 403) {
+    if (!response || !response.ok) {
+      if (response && (response.status === 404 || response.status === 403)) {
         throw new Error(
           'Could not access the calendar. Make sure you copied the "Secret address in iCal format" from Google Calendar settings.'
         );
       }
-      throw new Error(`Failed to download calendar (HTTP status ${response.status})`);
+      throw new Error(`Failed to download calendar (HTTP status ${response?.status || 'network error'})`);
+    }
+
+    // Limit maximum response size to 5MB to avoid memory exhaustion
+    const MAX_FEED_BYTES = 5 * 1024 * 1024;
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_FEED_BYTES) {
+      throw new Error('Calendar feed exceeds maximum allowed size (5MB).');
     }
 
     const icsData = await response.text();
+    if (icsData.length > MAX_FEED_BYTES) {
+      throw new Error('Calendar feed exceeds maximum allowed size (5MB).');
+    }
     if (!icsData.includes('BEGIN:VCALENDAR')) {
       throw new Error(
         'The provided link or ID did not return a valid iCalendar (.ics) stream. Make sure the calendar is public or use your secret iCal address.'
@@ -160,22 +274,26 @@ export class CalendarSyncService {
     const rangeEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
     const events: CalendarEvent[] = [];
+    const MAX_EVENTS_PER_CALENDAR = 500;
 
     for (const k in parsed) {
+      if (events.length >= MAX_EVENTS_PER_CALENDAR) break;
       if (!Object.prototype.hasOwnProperty.call(parsed, k)) continue;
       const item = parsed[k] as any;
 
       if (!item || item.type !== 'VEVENT') continue;
 
-      const title = item.summary ? String(item.summary).trim() : '(No Title)';
-      const description = item.description ? String(item.description).trim() : undefined;
-      const location = item.location ? String(item.location).trim() : undefined;
+      // Bound string lengths to prevent Discord API Form Body 50035 errors and memory bloat
+      const title = item.summary ? String(item.summary).trim().slice(0, 200) : '(No Title)';
+      const description = item.description ? String(item.description).trim().slice(0, 1000) : undefined;
+      const location = item.location ? String(item.location).trim().slice(0, 250) : undefined;
       const isAllDay = item.datetype === 'date';
 
       // Handling recurring events
       if (item.rrule) {
         try {
-          const dates = item.rrule.between(rangeStart, rangeEnd, true);
+          // Bound recurring occurrences to prevent high-frequency recurrence expansion DoS
+          const dates = item.rrule.between(rangeStart, rangeEnd, true).slice(0, 100);
           const duration =
             item.end && item.start
               ? new Date(item.end).getTime() - new Date(item.start).getTime()

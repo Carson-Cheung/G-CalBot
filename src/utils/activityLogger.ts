@@ -95,6 +95,12 @@ export class ActivityLogger {
       this.isPrePopulated = false;
     }
 
+    // Sanitize control characters and newlines to prevent log injection
+    const sanitizedMessage = String(message)
+      .replace(/[\r\n\x1b\x00-\x1f]/g, ' ')
+      .trim()
+      .slice(0, 300);
+
     this.counter++;
     const entry: ActivityLogEntry = {
       id: `act_${Date.now()}_${this.counter}`,
@@ -102,7 +108,7 @@ export class ActivityLogger {
       instanceId: process.env.RENDER_INSTANCE_ID?.slice(-5) || 'rgl9d',
       type,
       icon,
-      message,
+      message: sanitizedMessage,
     };
 
     this.logs.push(entry);

@@ -5,6 +5,12 @@ import { activityLogger } from "../../utils/activityLogger";
 
 export const authRouter = Router();
 
+function maskUsername(name: string): string {
+  if (!name) return "anonymous";
+  if (name.length <= 2) return `${name}***`;
+  return `${name.slice(0, 2)}***${name.slice(-1)}`;
+}
+
 // App public config
 authRouter.get(["/config", "/auth/config"], (_req: Request, res: Response) => {
   res.json({ clientId: config.clientId });
@@ -70,7 +76,7 @@ authRouter.post("/token", async (req: Request, res: Response) => {
       activityLogger.log(
         "system",
         "📱",
-        `Discord Activity authenticated for @${user.global_name || user.username}`,
+        `Discord Activity authenticated for @${maskUsername(user.global_name || user.username)}`,
       );
     }
 
@@ -88,11 +94,6 @@ authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
   if (typeof authHeader === "string" && authHeader.trim()) {
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
     token = match ? match[1].trim() : authHeader.trim();
-  } else if (
-    typeof req.query.session === "string" &&
-    req.query.session.trim()
-  ) {
-    token = req.query.session.trim();
   }
 
   const payload = verifySessionToken(token);
@@ -101,7 +102,7 @@ authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
       activityLogger.log(
         "system",
         "🌐",
-        `Discord Activity web dashboard connected for the user @${payload.username}`,
+        `Discord Activity web dashboard connected for @${maskUsername(payload.username)}`,
       );
     }
     return res.json({ authenticated: true, user: payload });

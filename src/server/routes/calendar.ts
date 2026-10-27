@@ -13,9 +13,6 @@ function extractBearerToken(req: Request): string | null {
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
     return match ? match[1].trim() : authHeader.trim();
   }
-  if (typeof req.query.session === 'string' && req.query.session.trim()) {
-    return req.query.session.trim();
-  }
   return null;
 }
 
@@ -175,11 +172,12 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       const events = await CalendarSyncService.fetchUpcomingEvents(cleanUrl, 7);
 
       const existing = storage.getUser(userId);
-      const defaultName =
+      const rawName =
         name ||
         (existing && existing.calendars.length > 0
           ? `Calendar ${existing.calendars.length + 1}`
           : 'Primary');
+      const defaultName = String(rawName).trim().slice(0, 50);
 
       const linked = storage.addCalendar(
         userId,
@@ -318,6 +316,11 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     res.json({ success: true, user });
   });
 
+  // In-memory rate limiting map for test DM alerts to prevent abuse/spam
+  const testDmCooldowns = new Map<string, number>();
+  const DEMO_TEST_COOLDOWN_MS = 60 * 1000; // 60s cooldown for demo visitors
+  const USER_TEST_COOLDOWN_MS = 15 * 1000; // 15s cooldown for authenticated users
+
   // Send a test reminder DM
   router.post('/user/:userId/test', async (req: Request, res: Response) => {
     const { userId, unauthorized } = resolveAuthorizedUserId(req);
@@ -328,6 +331,29 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     }
 
     const isDemo = userId === 'demo-user';
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const cooldownKey = isDemo ? `demo:${clientIp}` : `user:${userId}`;
+    const now = Date.now();
+    const lastSent = testDmCooldowns.get(cooldownKey) || 0;
+    const cooldownLimit = isDemo ? DEMO_TEST_COOLDOWN_MS : USER_TEST_COOLDOWN_MS;
+
+    if (now - lastSent < cooldownLimit) {
+      const remainingSec = Math.ceil((cooldownLimit - (now - lastSent)) / 1000);
+      return res.status(429).json({
+        error: `Please wait ${remainingSec}s before sending another test DM alert.`,
+      });
+    }
+    testDmCooldowns.set(cooldownKey, now);
+
+    // Prune stale cooldown entries if map grows
+    if (testDmCooldowns.size > 500) {
+      for (const [key, ts] of testDmCooldowns.entries()) {
+        if (now - ts > DEMO_TEST_COOLDOWN_MS * 2) {
+          testDmCooldowns.delete(key);
+        }
+      }
+    }
+
     const targetDiscordUserId = isDemo
       ? (await reminderEngine?.getOwnerUserId()) || config.ownerUserId
       : userId;
