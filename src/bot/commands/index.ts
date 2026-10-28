@@ -1,33 +1,37 @@
-import { ChatInputCommandInteraction } from 'discord.js';
+import {
+  ChatInputCommandInteraction,
+  RESTPostAPIApplicationCommandsJSONBody,
+} from 'discord.js';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { calendarCommand, calCommand } from './calendar';
-import { dashboardCommand, dashCommand, actCommand, activityCommand } from './dashboard';
+import { dashboardCommand, dashCommand, actCommand } from './dashboard';
 import { openCommand, oCommand } from './open';
+import { COMMAND_CONTEXTS, INTEGRATION_TYPES } from '../const';
 
 export interface BotCommand {
-  data: any;
-  execute?: (interaction: ChatInputCommandInteraction, reminderEngine: ReminderEngine) => Promise<any>;
+  data: { name: string; toJSON(): RESTPostAPIApplicationCommandsJSONBody };
+  execute?: (
+    interaction: ChatInputCommandInteraction,
+    reminderEngine: ReminderEngine,
+  ) => Promise<unknown>;
 }
 
-// Discord Activity Primary Entry Point (required by Discord when Activities are enabled)
-export const entryPointCommand = {
+const PRIMARY_ENTRY_POINT = 4;
+const ENTRY_POINT_HANDLER_DISCORD = 2;
+
+// Required by Discord when Activities are enabled; Discord launches the activity itself.
+const entryPointCommand: BotCommand = {
   data: {
     name: 'launch',
-    description: 'Launch an activity',
-    type: 4, // PrimaryEntryPoint
-    handler: 2, // Discord handles launching the activity
-    integration_types: [0, 1],
-    contexts: [0, 1, 2],
-    toJSON() {
-      return {
-        name: this.name,
-        description: this.description,
-        type: this.type,
-        handler: this.handler,
-        integration_types: this.integration_types,
-        contexts: this.contexts,
-      };
-    },
+    toJSON: () =>
+      ({
+        name: 'launch',
+        description: 'Launch an activity',
+        type: PRIMARY_ENTRY_POINT,
+        handler: ENTRY_POINT_HANDLER_DISCORD,
+        integration_types: INTEGRATION_TYPES,
+        contexts: COMMAND_CONTEXTS,
+      }) as RESTPostAPIApplicationCommandsJSONBody,
   },
 };
 
@@ -42,20 +46,8 @@ export const allCommands: BotCommand[] = [
   entryPointCommand,
 ];
 
-// Fast lookup Map: commandName -> command object
 export const commandsMap = new Map<string, BotCommand>(
   allCommands
-    .filter((cmd): cmd is BotCommand & { execute: NonNullable<BotCommand['execute']> } => typeof cmd.execute === 'function')
-    .map((cmd) => [cmd.data.name, cmd])
+    .filter((cmd) => typeof cmd.execute === 'function')
+    .map((cmd) => [cmd.data.name, cmd]),
 );
-
-export {
-  calendarCommand,
-  calCommand,
-  dashboardCommand,
-  dashCommand,
-  actCommand,
-  activityCommand,
-  openCommand,
-  oCommand,
-};

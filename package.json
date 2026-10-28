@@ -1,22 +1,23 @@
 {
   "name": "g-calbot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Discord bot and Activity for calendar reminders, multi-calendar sync and schedule sharing",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm run build:web && tsc",
-    "build:web": "esbuild src/web/App.tsx --bundle --outfile=public/js/app.js --format=esm --platform=browser --target=es2020 --minify",
+    "build": "npm run build:web && npm run typecheck",
+    "build:web": "esbuild src/web/main.tsx --bundle --outfile=public/js/app.js --format=esm --platform=browser --target=es2020 --minify",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/web",
     "start": "tsx src/index.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "dependencies": {
     "@discord/embedded-app-sdk": "^2.5.0",
-    "@types/pg": "^8.23.1",
     "cors": "^2.8.6",
     "discord-api-types": "^0.38.57",
     "discord.js": "^14.27.0",
@@ -33,6 +34,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.2",

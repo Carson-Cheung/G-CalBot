@@ -1,19 +1,93 @@
-import { Client, EmbedBuilder } from 'discord.js';
+import { Client, EmbedBuilder, User } from 'discord.js';
 import { config } from '../config';
 import { storage } from '../db/storage';
+import { DEMO_USER_ID, resolveUserCalendars } from '../db/userDefaults';
 import { CalendarSyncService } from './syncService';
 import { CalendarEvent, UserCalendarConfig } from '../types';
 import { getTimezoneDayRange, isValidTimezone } from '../utils/time';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
+
+const DEFAULT_TIMEZONE = 'America/Toronto';
+const DEFAULT_DIGEST_TIME = '08:00';
+const DEFAULT_WINDOW_DAYS = 7;
+const CHECK_INTERVAL_MS = 60 * 1000;
+const STARTUP_DELAY_MS = 5000;
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// A tick can run late when many feeds are slow; a reminder a few minutes late beats a missed one.
+const LATE_REMINDER_GRACE_MS = 5 * 60 * 1000;
+const USER_CHECK_CONCURRENCY = 5;
+const DIGEST_EVENT_LIMIT = 15;
+const DISCORD_DM_DISABLED = 50007;
 
 interface CachedEvents {
   lastFetched: number;
   events: CalendarEvent[];
 }
 
+function resolveTimezone(tz?: string): string {
+  return tz && isValidTimezone(tz) ? tz.trim() : DEFAULT_TIMEZONE;
+}
+
+/** Minutes since midnight for "HH:mm" or "H:mm"; plain string comparison breaks on unpadded hours. */
+function parseClockMinutes(value: string): number | null {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function minutesSinceMidnightIn(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return get('hour') * 60 + get('minute');
+}
+
+function zonedDateKey(date: Date, timeZone: string): string {
+  return date.toLocaleDateString('en-CA', { timeZone });
+}
+
+/** All-day dates from node-ical are server-local midnights, so read them back with local getters. */
+function floatingDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function displayNameOf(user: User): string {
+  return user.displayName || user.username || 'User';
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      await worker(items[next++]);
+    }
+  });
+  await Promise.all(runners);
+}
+
 export class ReminderEngine {
   private client: Client;
-  private cache: Map<string, CachedEvents> = new Map();
+  private cache = new Map<string, CachedEvents>();
+  private inflight = new Map<string, Promise<CalendarEvent[]>>();
+  private startupTimer: NodeJS.Timeout | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private isChecking = false;
@@ -23,79 +97,72 @@ export class ReminderEngine {
   }
 
   public start() {
+    if (this.checkInterval) return;
     console.log('Starting calendar reminder engine...');
     activityLogger.log('system', '📅', 'Starting calendar reminder engine...');
-    // Run initial check after 5 seconds to let the bot connect
-    setTimeout(() => this.checkReminders(), 5000);
-
-    // Check reminders every 60 seconds
-    this.checkInterval = setInterval(() => this.checkReminders(), 60 * 1000);
-
-    // Clean up old sent reminders once every 24 hours
-    this.cleanupInterval = setInterval(
-      () => {
-        storage.cleanupOldReminders();
-      },
-      24 * 60 * 60 * 1000
-    );
+    this.startupTimer = setTimeout(() => this.checkReminders(), STARTUP_DELAY_MS);
+    this.checkInterval = setInterval(() => this.checkReminders(), CHECK_INTERVAL_MS);
+    this.cleanupInterval = setInterval(() => storage.cleanupOldReminders(), CLEANUP_INTERVAL_MS);
   }
 
   public stop() {
+    if (this.startupTimer) clearTimeout(this.startupTimer);
     if (this.checkInterval) clearInterval(this.checkInterval);
     if (this.cleanupInterval) clearInterval(this.cleanupInterval);
+    this.startupTimer = null;
+    this.checkInterval = null;
+    this.cleanupInterval = null;
   }
 
   /**
-   * Refreshes events for a single user across all linked calendars, using cache if younger than 5 minutes.
+   * Refreshes events for a single user across all linked calendars. The default
+   * 7-day window is cached for the sync interval; concurrent callers share one fetch.
    */
   public async getUserEvents(
     user: UserCalendarConfig,
     forceRefresh = false,
-    windowDays = 7
+    windowDays = DEFAULT_WINDOW_DAYS
   ): Promise<CalendarEvent[]> {
-    const cached = this.cache.get(user.userId);
-    const now = Date.now();
+    const cacheable = windowDays === DEFAULT_WINDOW_DAYS;
+    const cached = cacheable ? this.cache.get(user.userId) : undefined;
     const cacheTtl = (config.syncIntervalMinutes || 5) * 60 * 1000;
 
-    if (!forceRefresh && windowDays === 7 && cached && now - cached.lastFetched < cacheTtl) {
+    if (!forceRefresh && cached && Date.now() - cached.lastFetched < cacheTtl) {
       return cached.events;
     }
 
-    try {
-      // Support both calendars array and legacy icalUrl
-      const calendars =
-        user.calendars && user.calendars.length > 0
-          ? user.calendars
-          : user.icalUrl
-            ? [
-                {
-                  id: 'primary',
-                  name: 'Primary',
-                  url: user.icalUrl,
-                  addedAt: user.createdAt,
-                },
-              ]
-            : [];
+    const inflightKey = `${user.userId}:${windowDays}`;
+    const pending = this.inflight.get(inflightKey);
+    if (pending) return pending.catch(() => cached?.events || []);
 
-      const events = await CalendarSyncService.fetchMultipleCalendars(
-        calendars,
-        windowDays
-      );
-      if (windowDays === 7) {
-        this.cache.set(user.userId, {
-          lastFetched: now,
-          events,
-        });
+    const fetchPromise = CalendarSyncService.fetchMultipleCalendars(
+      resolveUserCalendars(user),
+      windowDays
+    );
+    this.inflight.set(inflightKey, fetchPromise);
+
+    try {
+      const events = await fetchPromise;
+      // Skip caching if the cache was invalidated (e.g. calendar linked) mid-fetch.
+      if (cacheable && this.inflight.get(inflightKey) === fetchPromise) {
+        this.cache.set(user.userId, { lastFetched: Date.now(), events });
       }
       return events;
     } catch (err) {
       console.error(`Failed to fetch calendar for user ${user.userId}:`, err);
       return cached?.events || [];
+    } finally {
+      if (this.inflight.get(inflightKey) === fetchPromise) {
+        this.inflight.delete(inflightKey);
+      }
     }
   }
 
   public invalidateUserCache(userId: string) {
     this.cache.delete(userId);
+    for (const key of this.inflight.keys()) {
+      if (key.startsWith(`${userId}:`)) this.inflight.delete(key);
+    }
   }
 
   public async getOwnerUserId(): Promise<string | null> {
@@ -104,19 +171,13 @@ export class ReminderEngine {
     }
     try {
       const app = await this.client.application?.fetch();
-      const owner: any = app?.owner;
-      if (owner) {
-        if (typeof owner.ownerId === 'string') {
-          return owner.ownerId;
-        }
-        if (typeof owner.id === 'string') {
-          return owner.id;
-        }
-      }
+      const owner = app?.owner;
+      if (!owner) return null;
+      return 'ownerId' in owner ? owner.ownerId : owner.id;
     } catch (err) {
       console.error('Failed to resolve Discord application owner:', err);
+      return null;
     }
-    return null;
   }
 
   private async checkReminders() {
@@ -124,63 +185,52 @@ export class ReminderEngine {
     this.isChecking = true;
 
     try {
-      const users = storage.getAllUsers();
-      const now = Date.now();
+      const users = storage
+        .getAllUsers()
+        .filter(
+          (u) => u.userId !== DEMO_USER_ID && u.enabled && resolveUserCalendars(u).length > 0
+        );
+      this.pruneCache(new Set(users.map((u) => u.userId)));
 
-      for (const user of users) {
-        if (user.userId === 'demo-user') continue;
-        const hasCalendars =
-          (user.calendars && user.calendars.length > 0) || Boolean(user.icalUrl);
-        if (!user.enabled || !hasCalendars) continue;
-
+      await runWithConcurrency(users, USER_CHECK_CONCURRENCY, async (user) => {
         if (user.dailyDigestEnabled) {
           await this.checkUserDailyDigest(user);
         }
-
         try {
-          const events = await this.getUserEvents(user);
-          const reminderLeadMinutes = user.reminderMinutes ?? 10;
-          const targetWindowMs = reminderLeadMinutes * 60 * 1000;
-
-          for (const event of events) {
-            if (event.isAllDay) continue; // Skip all-day events from minute-level alerts
-
-            const startTime = event.start.getTime();
-            const msUntilStart = startTime - now;
-
-            // Check if event start is within the reminder window (lead time down to 1 minute after start)
-            if (msUntilStart <= targetWindowMs && msUntilStart >= -60 * 1000) {
-              const alreadySent = storage.hasReminderBeenSent(
-                user.userId,
-                event.id,
-                reminderLeadMinutes
-              );
-
-              if (!alreadySent) {
-                const sent = await this.sendReminder(
-                  user.userId,
-                  event,
-                  reminderLeadMinutes
-                );
-                if (sent) {
-                  storage.markReminderSent(
-                    user.userId,
-                    event.id,
-                    reminderLeadMinutes
-                  );
-                }
-              }
-            }
-          }
+          await this.dispatchDueReminders(user, await this.getUserEvents(user));
         } catch (err) {
-          console.error(
-            `Error processing reminders for user ${user.userId}:`,
-            err
-          );
+          console.error(`Error processing reminders for user ${user.userId}:`, err);
         }
-      }
+      });
+    } catch (err) {
+      console.error('Reminder check failed:', err);
     } finally {
       this.isChecking = false;
+    }
+  }
+
+  /** Drops cached feeds for users that were deleted or disabled so the cache cannot grow without bound. */
+  private pruneCache(activeUserIds: Set<string>) {
+    for (const userId of this.cache.keys()) {
+      if (!activeUserIds.has(userId)) this.cache.delete(userId);
+    }
+  }
+
+  private async dispatchDueReminders(user: UserCalendarConfig, events: CalendarEvent[]) {
+    const leadMinutes = user.reminderMinutes ?? 10;
+    const leadMs = leadMinutes * 60 * 1000;
+    const now = Date.now();
+
+    for (const event of events) {
+      if (event.isAllDay) continue;
+
+      const msUntilStart = event.start.getTime() - now;
+      if (msUntilStart > leadMs || msUntilStart < -LATE_REMINDER_GRACE_MS) continue;
+      if (storage.hasReminderBeenSent(user.userId, event.id, leadMinutes)) continue;
+
+      if (await this.sendReminder(user.userId, event, leadMinutes)) {
+        storage.markReminderSent(user.userId, event.id, leadMinutes);
+      }
     }
   }
 
@@ -191,20 +241,18 @@ export class ReminderEngine {
   ): Promise<boolean> {
     try {
       const user = await this.client.users.fetch(userId);
-      if (!user) return false;
 
       const startUnix = Math.floor(event.start.getTime() / 1000);
       const endUnix = Math.floor(event.end.getTime() / 1000);
-
       const titleTag = event.calendarName ? `[${event.calendarName}] ` : '';
 
       const embed = new EmbedBuilder()
         .setColor(0x4285f4) // Google Calendar Blue
-        .setTitle(`📅 Reminder: ${titleTag}${event.title}`)
+        .setTitle(truncate(`📅 Reminder: ${titleTag}${event.title}`, 256))
         .setDescription(
           leadMinutes === 0
-            ? `**Starting right now!**`
-            : `Starting in **${leadMinutes} minutes** (<t:${startUnix}:R>)`
+            ? '**Starting right now!**'
+            : `Starting in **${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}** (<t:${startUnix}:R>)`
         )
         .addFields({
           name: '⏰ Time',
@@ -213,45 +261,31 @@ export class ReminderEngine {
         });
 
       if (event.location) {
-        embed.addFields({
-          name: '📍 Location',
-          value: event.location,
-          inline: false,
-        });
+        embed.addFields({ name: '📍 Location', value: event.location, inline: false });
       }
 
       if (event.description) {
-        const truncatedDesc =
-          event.description.length > 300
-            ? `${event.description.slice(0, 300)}...`
-            : event.description;
         embed.addFields({
           name: '📝 Description',
-          value: truncatedDesc,
+          value: event.description.length > 300 ? `${event.description.slice(0, 300)}...` : event.description,
           inline: false,
         });
       }
 
-      embed.setFooter({
-        text: 'Google Calendar Sync • Privacy Protected',
-      });
+      embed.setFooter({ text: 'Google Calendar Sync • Privacy Protected' });
       embed.setTimestamp();
 
       await user.send({ embeds: [embed] });
       console.log(`Sent reminder to user ${userId} for event "${event.title}"`);
-      const targetName = user.globalName || user.username || (user as any).displayName || 'User';
-      const censored = censorUsername(targetName);
       activityLogger.log(
         'reminder',
         '🔔',
-        `Dispatched event reminder to ${censored} (${leadMinutes === 0 ? 'starting now' : `${leadMinutes}m before`})`
+        `Dispatched event reminder to ${censorUsername(displayNameOf(user))} (${leadMinutes === 0 ? 'starting now' : `${leadMinutes}m before`})`
       );
       return true;
     } catch (err: any) {
-      if (err.code === 50007) {
-        console.warn(
-          `Cannot send DM to user ${userId} (DMs disabled in Discord settings).`
-        );
+      if (err?.code === DISCORD_DM_DISABLED) {
+        console.warn(`Cannot send DM to user ${userId} (DMs disabled in Discord settings).`);
       } else {
         console.error(`Failed to send reminder DM to user ${userId}:`, err);
       }
@@ -259,41 +293,46 @@ export class ReminderEngine {
     }
   }
 
-  public async sendDailyDigest(
-    userId: string,
-    isTest = false
-  ): Promise<boolean> {
+  private static isEventOnDay(
+    event: CalendarEvent,
+    dayKey: string,
+    dayStart: Date,
+    dayEnd: Date
+  ): boolean {
+    if (event.isAllDay) {
+      // DTEND of an all-day event is exclusive.
+      return floatingDateKey(event.start) <= dayKey && dayKey < floatingDateKey(event.end);
+    }
+    return (
+      event.start.getTime() <= dayEnd.getTime() && event.end.getTime() >= dayStart.getTime()
+    );
+  }
+
+  public async sendDailyDigest(userId: string, isTest = false): Promise<boolean> {
     const user = storage.getUser(userId);
     if (!user) return false;
 
     try {
       const discordUser = await this.client.users.fetch(userId);
-      if (!discordUser) return false;
 
-      // 1. Calculate the start and end of today in user's timezone
-      const tz = user.timezone || 'America/Toronto';
+      const tz = resolveTimezone(user.timezone);
       const now = new Date();
+      const todayKey = zonedDateKey(now, tz);
       const todayRange = getTimezoneDayRange(now, tz, 1);
-      const startOfToday = todayRange.start;
-      const endOfToday = todayRange.end;
 
-      // 2. Fetch all events and filter for today only
       const allEvents = await this.getUserEvents(user, true);
       const todayEvents = allEvents
-        .filter(
-          (e) =>
-            e.start.getTime() <= endOfToday.getTime() &&
-            e.end.getTime() >= startOfToday.getTime()
-        )
+        .filter((e) => ReminderEngine.isEventOnDay(e, todayKey, todayRange.start, todayRange.end))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-      // 3. Create the Embed Card
-      const dateHeader = todayRange.dateLabel || now.toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'short',
-        day: 'numeric',
-        timeZone: tz,
-      });
+      const dateHeader =
+        todayRange.dateLabel ||
+        now.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+          timeZone: tz,
+        });
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2) // Discord Blurple
@@ -304,77 +343,67 @@ export class ReminderEngine {
         .setTitle(`📅 Today's Agenda • ${dateHeader}`);
 
       if (todayEvents.length === 0) {
-        embed.setDescription(
-          '🎉 **You have no events scheduled for today!** Enjoy your free day.'
-        );
+        embed.setDescription('🎉 **You have no events scheduled for today!** Enjoy your free day.');
       } else {
+        const hidden = todayEvents.length - DIGEST_EVENT_LIMIT;
         embed.setDescription(
-          `Good morning! You have **${todayEvents.length} event(s)** scheduled for today:`
+          `Good morning! You have **${todayEvents.length} event(s)** scheduled for today:` +
+            (hidden > 0 ? `\n*Showing the first ${DIGEST_EVENT_LIMIT}; ${hidden} more not shown.*` : '')
         );
-        for (const ev of todayEvents.slice(0, 15)) {
+        // Embeds are capped at 6000 characters in total, so per-field sizes stay small.
+        for (const ev of todayEvents.slice(0, DIGEST_EVENT_LIMIT)) {
           const startSec = Math.floor(ev.start.getTime() / 1000);
           const endSec = Math.floor(ev.end.getTime() / 1000);
-          const calTag = ev.calendarName ? ` \`[${ev.calendarName}]\`` : '';
-          const locTag = ev.location ? `\n📍 *${ev.location}*` : '';
+          const calTag = ev.calendarName ? ` [${ev.calendarName}]` : '';
+          const locTag = ev.location ? `\n📍 *${truncate(ev.location, 120)}*` : '';
           const timeStr = ev.isAllDay
             ? '📅 *All Day*'
             : `⏰ <t:${startSec}:t> - <t:${endSec}:t> (<t:${startSec}:R>)`;
           embed.addFields({
-            name: `${ev.title}${calTag}`,
+            name: truncate(`${ev.title}${calTag}`, 100),
             value: `${timeStr}${locTag}`,
           });
         }
       }
 
       embed.setFooter({
-        text: `Daily Reminder Set for ${user.dailyDigestTime || '08:00'} • G-CalBot`,
+        text: `Daily Reminder Set for ${user.dailyDigestTime || DEFAULT_DIGEST_TIME} • G-CalBot`,
       });
       embed.setTimestamp();
       await discordUser.send({ embeds: [embed] });
-      const targetName =
-        discordUser.globalName || discordUser.username || (discordUser as any).displayName || 'User';
-      const censored = censorUsername(targetName);
       activityLogger.log(
         'reminder',
         '📅',
-        `Dispatched daily schedule briefing to ${censored}${isTest ? ' (test)' : ''}`
+        `Dispatched daily schedule briefing to ${censorUsername(displayNameOf(discordUser))}${isTest ? ' (test)' : ''}`
       );
       return true;
-    } catch (err: any) {
+    } catch (err) {
       console.error(`Failed to send daily digest to ${userId}:`, err);
       return false;
     }
   }
 
   /**
-   * Checks whether it's time to send today's daily briefing to the user.
+   * Sends today's briefing once the user's configured local time has passed.
    */
   private async checkUserDailyDigest(user: UserCalendarConfig) {
-    if (!user.dailyDigestEnabled) return;
-    let tz = user.timezone || 'America/Toronto';
-    if (!isValidTimezone(tz)) {
-      tz = 'America/Toronto';
-    }
+    const tz = resolveTimezone(user.timezone);
 
     try {
       const now = new Date();
-      const currentTimeStr = now.toLocaleTimeString('en-US', {
-        timeZone: tz,
-        hourCycle: 'h23',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      const todayDateStr = now.toLocaleDateString('en-CA', { timeZone: tz });
-      const targetTime = user.dailyDigestTime || '08:00';
-      if (
-        currentTimeStr >= targetTime &&
-        user.lastDailyDigestDate !== todayDateStr
-      ) {
-        const sent = await this.sendDailyDigest(user.userId, false);
-        if (sent) {
-          user.lastDailyDigestDate = todayDateStr;
-          storage.saveUser(user);
-        }
+      const todayKey = zonedDateKey(now, tz);
+      if (user.lastDailyDigestDate === todayKey) return;
+
+      const targetMinutes =
+        parseClockMinutes(user.dailyDigestTime || DEFAULT_DIGEST_TIME) ??
+        (parseClockMinutes(DEFAULT_DIGEST_TIME) as number);
+      if (minutesSinceMidnightIn(now, tz) < targetMinutes) return;
+
+      if (await this.sendDailyDigest(user.userId, false)) {
+        // Re-read so a settings change saved while the digest was sending is not overwritten.
+        const latest = storage.getUser(user.userId) ?? user;
+        latest.lastDailyDigestDate = todayKey;
+        storage.saveUser(latest);
       }
     } catch (err) {
       console.error(`Error checking daily digest for user ${user.userId}:`, err);

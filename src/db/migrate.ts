@@ -8,6 +8,16 @@ import {
   upsertUserToPostgres,
 } from './postgres';
 import { UserCalendarConfig } from '../types';
+import { DEMO_USER_ID, createDemoUser, normalizeUserCalendars } from './userDefaults';
+
+// Secret iCal addresses grant read access to a calendar, so only the host is logged.
+function describeFeedHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '(invalid URL)';
+  }
+}
 
 async function runMigration(): Promise<void> {
   console.log('🚀 Starting Neon PostgreSQL Migration for G-CalBot...');
@@ -66,47 +76,15 @@ async function runMigration(): Promise<void> {
       }
     }
 
-    // 3. Ensure demo-user is always present in Neon PostgreSQL
-    if (!usersToMigrate['demo-user']) {
-      usersToMigrate['demo-user'] = {
-        userId: 'demo-user',
-        reminderMinutes: 10,
-        enabled: true,
-        createdAt: '2026-10-20T00:00:00.000Z',
-        updatedAt: '2026-10-20T00:00:00.000Z',
-        calendars: [
-          {
-            id: 'demo_cal_f1',
-            name: 'Formula 1 Schedule (Demo)',
-            url: 'https://f1calendar.com/download/f1-calendar_p1_p2_p3_qualifying_sprint_gp.ics',
-            addedAt: '2026-10-20T00:00:00.000Z',
-          },
-          {
-            id: 'demo_cal_holidays',
-            name: 'Canadian Holidays (Demo)',
-            url: 'https://calendar.google.com/calendar/ical/en.canadian%23holiday%40group.v.calendar.google.com/public/basic.ics',
-            addedAt: '2026-10-20T00:00:00.000Z',
-          },
-        ],
-      };
+    if (!usersToMigrate[DEMO_USER_ID]) {
+      usersToMigrate[DEMO_USER_ID] = createDemoUser();
     }
 
-    // Normalize calendars and upsert each user to Neon PostgreSQL
     console.log(
       `🔄 Migrating ${Object.keys(usersToMigrate).length} user(s) to Neon PostgreSQL...`
     );
     for (const user of Object.values(usersToMigrate)) {
-      if (!user.calendars) {
-        user.calendars = [];
-        if (user.icalUrl) {
-          user.calendars.push({
-            id: 'primary',
-            name: 'Primary',
-            url: user.icalUrl,
-            addedAt: user.createdAt || new Date().toISOString(),
-          });
-        }
-      }
+      normalizeUserCalendars(user);
       await upsertUserToPostgres(pool, user);
       console.log(
         `  ✓ Migrated user ${user.userId} with ${user.calendars.length} linked calendar(s)`
@@ -136,13 +114,14 @@ async function runMigration(): Promise<void> {
       console.log(`   Timezone: ${u.timezone || 'Not set'}`);
       console.log(`   Linked Calendars (${u.calendars.length}):`);
       for (const cal of u.calendars) {
-        console.log(`     • [${cal.id}] "${cal.name}" -> ${cal.url}`);
+        console.log(`     • [${cal.id}] "${cal.name}" -> ${describeFeedHost(cal.url)}`);
       }
     }
     console.log('\n======================================================\n');
   } catch (err) {
     console.error('❌ Migration failed:', err);
-    process.exit(1);
+    // exitCode rather than exit() so the finally block still closes the pool.
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }

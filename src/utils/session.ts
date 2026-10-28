@@ -8,20 +8,43 @@ export interface SessionPayload {
   exp: number;
 }
 
-let ephemeralSecret: string | null = null;
+export const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Issued tokens are a few hundred bytes; oversized input is rejected before hashing.
+const MAX_TOKEN_LENGTH = 2048;
+
+let cachedSecret: string | null = null;
 
 function getSecret(): string {
-  const secret = (config.clientSecret || config.discordToken || '').trim();
-  if (secret) {
-    return secret;
-  }
-  if (!ephemeralSecret) {
-    ephemeralSecret = crypto.randomBytes(32).toString('hex');
+  if (cachedSecret) return cachedSecret;
+
+  const configured = config.sessionSecret || config.clientSecret || config.discordToken;
+  if (configured) {
+    cachedSecret = configured;
+  } else {
+    cachedSecret = crypto.randomBytes(32).toString('hex');
     console.warn(
-      '⚠️ No DISCORD_CLIENT_SECRET or DISCORD_TOKEN configured. Using cryptographically secure in-memory ephemeral secret for session tokens.'
+      '⚠️ No SESSION_SECRET, DISCORD_CLIENT_SECRET or DISCORD_TOKEN configured. Session tokens use an in-memory key and will not survive a restart.'
     );
   }
-  return ephemeralSecret;
+  return cachedSecret;
+}
+
+function sign(payloadEncoded: string): string {
+  return crypto.createHmac('sha256', getSecret()).update(payloadEncoded).digest('base64url');
+}
+
+function isSessionPayload(value: unknown): value is SessionPayload {
+  if (!value || typeof value !== 'object') return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.userId === 'string' &&
+    p.userId.length > 0 &&
+    typeof p.username === 'string' &&
+    typeof p.exp === 'number' &&
+    Number.isFinite(p.exp) &&
+    (p.avatarUrl === undefined || typeof p.avatarUrl === 'string')
+  );
 }
 
 /**
@@ -30,7 +53,7 @@ function getSecret(): string {
  */
 export function createSessionToken(
   user: { userId: string; username: string; avatarUrl?: string },
-  ttlMs = 7 * 24 * 60 * 60 * 1000
+  ttlMs = DEFAULT_SESSION_TTL_MS
 ): string {
   const payload: SessionPayload = {
     userId: String(user.userId),
@@ -40,67 +63,46 @@ export function createSessionToken(
   };
 
   const payloadEncoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  const signature = crypto
-    .createHmac('sha256', getSecret())
-    .update(payloadEncoded)
-    .digest('base64url');
-
-  return `${payloadEncoded}.${signature}`;
+  return `${payloadEncoded}.${sign(payloadEncoded)}`;
 }
 
 /**
- * Verifies an HMAC-SHA256 signed session token.
- * Validates cryptographic timing-safe signature equality and expiration.
+ * Verifies an HMAC-SHA256 signed session token, returning its payload when the
+ * signature matches and the token has not expired.
  */
 export function verifySessionToken(token?: string | null): SessionPayload | null {
-  if (!token || typeof token !== 'string') {
+  if (!token || typeof token !== 'string' || token.length > MAX_TOKEN_LENGTH) {
     return null;
   }
 
   const parts = token.trim().split('.');
-  if (parts.length !== 2) {
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return null;
   }
-
   const [payloadEncoded, signature] = parts;
-  if (!payloadEncoded || !signature) {
+
+  const expected = Buffer.from(sign(payloadEncoded), 'utf8');
+  const provided = Buffer.from(signature, 'utf8');
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
     return null;
   }
 
   try {
-    const expectedSignature = crypto
-      .createHmac('sha256', getSecret())
-      .update(payloadEncoded)
-      .digest('base64url');
-
-    const sigBuf = Buffer.from(signature, 'utf8');
-    const expectedSigBuf = Buffer.from(expectedSignature, 'utf8');
-
-    if (sigBuf.length !== expectedSigBuf.length) {
+    const payload: unknown = JSON.parse(Buffer.from(payloadEncoded, 'base64url').toString('utf8'));
+    if (!isSessionPayload(payload) || payload.exp <= Date.now()) {
       return null;
     }
-
-    if (!crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
-      return null;
-    }
-
-    const payloadJson = Buffer.from(payloadEncoded, 'base64url').toString('utf8');
-    const payload = JSON.parse(payloadJson) as SessionPayload;
-
-    if (!payload || typeof payload !== 'object') {
-      return null;
-    }
-
-    if (!payload.userId || typeof payload.exp !== 'number') {
-      return null;
-    }
-
-    if (payload.exp <= Date.now()) {
-      return null;
-    }
-
     return payload;
   } catch {
     return null;
   }
+}
+
+/**
+ * Extracts the token from an `Authorization: Bearer <token>` header value.
+ */
+export function parseBearerToken(header: string | undefined): string | null {
+  if (typeof header !== 'string') return null;
+  const match = header.match(/^\s*Bearer\s+(\S+)\s*$/i);
+  return match ? match[1] : null;
 }

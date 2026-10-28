@@ -12,138 +12,102 @@ import {
   upsertReminderToPostgres,
   cleanupRemindersInPostgres,
 } from './postgres';
+import { DEMO_USER_ID, createDemoUser, normalizeUserCalendars } from './userDefaults';
 
 interface DatabaseSchema {
   users: Record<string, UserCalendarConfig>;
   sentReminders: Record<string, number>; // key: `${userId}:${eventId}:${leadMinutes}` -> timestamp
 }
 
+function reminderKey(userId: string, eventId: string, leadMinutes: number): string {
+  return `${userId}:${eventId}:${leadMinutes}`;
+}
+
 class Storage {
   private filePath: string;
-  private data: DatabaseSchema;
+  private data: DatabaseSchema = { users: {}, sentReminders: {} };
   private pool: Pool | null = null;
   private pgWriteChain: Promise<void> = Promise.resolve();
 
-  private getDefaultDemoUser(): UserCalendarConfig {
-    return {
-      userId: 'demo-user',
-      reminderMinutes: 10,
-      enabled: true,
-      createdAt: '2026-10-20T00:00:00.000Z',
-      updatedAt: '2026-10-20T00:00:00.000Z',
-      calendars: [
-        {
-          id: 'demo_cal_f1',
-          name: 'Formula 1 Schedule (Demo)',
-          url: 'https://f1calendar.com/download/f1-calendar_p1_p2_p3_qualifying_sprint_gp.ics',
-          addedAt: '2026-10-20T00:00:00.000Z',
-        },
-        {
-          id: 'demo_cal_holidays',
-          name: 'Canadian Holidays (Demo)',
-          url: 'https://calendar.google.com/calendar/ical/en.canadian%23holiday%40group.v.calendar.google.com/public/basic.ics',
-          addedAt: '2026-10-20T00:00:00.000Z',
-        },
-      ],
-    };
+  constructor() {
+    this.filePath = config.storagePath;
+    this.loadLocalFile();
+    this.mergeEnvBackup();
+    this.ensureDemoUser();
   }
 
   private ensureDemoUser(): UserCalendarConfig {
-    const existing = this.data.users['demo-user'];
+    const existing = this.data.users[DEMO_USER_ID];
     if (!existing || !existing.calendars || existing.calendars.length === 0) {
-      const demoUser = this.getDefaultDemoUser();
-      this.data.users['demo-user'] = demoUser;
+      const demoUser = createDemoUser();
+      this.data.users[DEMO_USER_ID] = demoUser;
       return demoUser;
     }
     return existing;
   }
 
-  constructor() {
-    this.filePath = config.storagePath;
-    this.data = {
-      users: {},
-      sentReminders: {},
-    };
-    this.init();
-  }
-
-  private init() {
+  private loadLocalFile() {
     const dir = path.dirname(this.filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    if (fs.existsSync(this.filePath)) {
-      try {
-        const raw = fs.readFileSync(this.filePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        this.data = {
-          users: parsed.users || {},
-          sentReminders: parsed.sentReminders || {},
-        };
+    if (!fs.existsSync(this.filePath)) {
+      this.persist();
+      return;
+    }
 
-        // Normalize backward compatibility for users
-        for (const user of Object.values(this.data.users)) {
-          if (!user.calendars) {
-            user.calendars = [];
-            if (user.icalUrl) {
-              user.calendars.push({
-                id: 'primary',
-                name: 'Primary',
-                url: user.icalUrl,
-                addedAt: user.createdAt || new Date().toISOString(),
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to parse database file, preserving backup:', err);
-        try {
-          fs.copyFileSync(this.filePath, `${this.filePath}.corrupt.${Date.now()}`);
-        } catch {}
-        this.persist();
-      }
-    } else {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
+      this.data = {
+        users: parsed.users || {},
+        sentReminders: parsed.sentReminders || {},
+      };
+      Object.values(this.data.users).forEach(normalizeUserCalendars);
+    } catch (err) {
+      console.error('Failed to parse database file, preserving backup:', err);
+      try {
+        fs.copyFileSync(this.filePath, `${this.filePath}.corrupt.${Date.now()}`);
+      } catch {}
       this.persist();
     }
+  }
 
-    // Auto-restore / merge from DATABASE_BACKUP environment variable
-    if (process.env.DATABASE_BACKUP) {
-      try {
-        const backupRaw = process.env.DATABASE_BACKUP.trim();
-        const parsedBackup = JSON.parse(backupRaw);
-        if (parsedBackup && typeof parsedBackup === 'object') {
-          const backupUsers: Record<string, UserCalendarConfig> =
-            parsedBackup.users || parsedBackup;
-          let restoredCount = 0;
+  private mergeEnvBackup() {
+    const backupRaw = process.env.DATABASE_BACKUP?.trim();
+    if (!backupRaw) return;
 
-          for (const [userId, uConfig] of Object.entries(backupUsers)) {
-            if (!this.data.users[userId]) {
-              this.data.users[userId] = uConfig;
-              restoredCount++;
-            }
-          }
+    try {
+      const parsedBackup = JSON.parse(backupRaw);
+      if (!parsedBackup || typeof parsedBackup !== 'object') return;
 
-          if (parsedBackup.sentReminders) {
-            this.data.sentReminders = {
-              ...parsedBackup.sentReminders,
-              ...this.data.sentReminders,
-            };
-          }
+      const backupUsers: Record<string, UserCalendarConfig> =
+        parsedBackup.users || parsedBackup;
+      let restoredCount = 0;
 
-          if (restoredCount > 0) {
-            console.log(
-              `✅ Restored/Merged ${restoredCount} user(s) from DATABASE_BACKUP environment variable! (Total: ${Object.keys(this.data.users).length})`
-            );
-            this.persist();
-          }
+      for (const [userId, uConfig] of Object.entries(backupUsers)) {
+        if (!this.data.users[userId]) {
+          this.data.users[userId] = normalizeUserCalendars(uConfig);
+          restoredCount++;
         }
-      } catch (bErr) {
-        console.error('Failed to parse DATABASE_BACKUP environment variable:', bErr);
       }
-    }
 
-    this.ensureDemoUser();
+      if (parsedBackup.sentReminders) {
+        this.data.sentReminders = {
+          ...parsedBackup.sentReminders,
+          ...this.data.sentReminders,
+        };
+      }
+
+      if (restoredCount > 0) {
+        console.log(
+          `✅ Restored/Merged ${restoredCount} user(s) from DATABASE_BACKUP environment variable! (Total: ${Object.keys(this.data.users).length})`
+        );
+        this.persist();
+      }
+    } catch (err) {
+      console.error('Failed to parse DATABASE_BACKUP environment variable:', err);
+    }
   }
 
   /**
@@ -152,60 +116,56 @@ class Storage {
    */
   public async initDatabase(): Promise<void> {
     this.ensureDemoUser();
-    if (config.databaseUrl) {
-      try {
-        this.pool = createPostgresPool(config.databaseUrl);
-        await initPostgresSchema(this.pool);
-        const pgData = await loadAllFromPostgres(this.pool);
-
-        // Collect all local users to ensure nothing is lost
-        const localUsers: Record<string, UserCalendarConfig> = {
-          ...this.data.users,
-        };
-
-        // Migrate local users into Neon PostgreSQL if missing or missing calendars
-        for (const [userId, localUser] of Object.entries(localUsers)) {
-          const pgUser = pgData.users[userId];
-          if (!pgUser) {
-            await upsertUserToPostgres(this.pool, localUser);
-            pgData.users[userId] = localUser;
-          } else {
-            const pgUrls = new Set((pgUser.calendars || []).map((c) => c.url));
-            const missingCalendars = (localUser.calendars || []).filter(
-              (c) => !pgUrls.has(c.url)
-            );
-            if (missingCalendars.length > 0) {
-              const mergedUser: UserCalendarConfig = {
-                ...pgUser,
-                calendars: [...(pgUser.calendars || []), ...missingCalendars],
-                updatedAt: new Date().toISOString(),
-              };
-              await upsertUserToPostgres(this.pool, mergedUser);
-              pgData.users[userId] = mergedUser;
-            }
-          }
-        }
-
-        // Synchronize in-memory state with PostgreSQL state
-        this.data.users = { ...localUsers, ...pgData.users };
-        this.data.sentReminders = {
-          ...this.data.sentReminders,
-          ...pgData.sentReminders,
-        };
-        this.persist();
-
-        console.log(
-          `🐘 Connected to Neon PostgreSQL database (${Object.keys(this.data.users).length} users loaded/migrated)`
-        );
-      } catch (err) {
-        console.error('❌ Failed to connect to Neon PostgreSQL database:', err);
-        console.log('📦 Falling back to local JSON database.');
-        this.pool = null;
-      }
-    } else {
+    if (!config.databaseUrl) {
       console.log(
         '📦 Local JSON database active. Set DATABASE_URL in .env to connect to Neon PostgreSQL.'
       );
+      return;
+    }
+
+    const pool = createPostgresPool(config.databaseUrl);
+    try {
+      await initPostgresSchema(pool);
+      const pgData = await loadAllFromPostgres(pool);
+      const localUsers = { ...this.data.users };
+
+      for (const [userId, localUser] of Object.entries(localUsers)) {
+        const pgUser = pgData.users[userId];
+        if (!pgUser) {
+          await upsertUserToPostgres(pool, localUser);
+          pgData.users[userId] = localUser;
+          continue;
+        }
+        const pgUrls = new Set(pgUser.calendars.map((c) => c.url));
+        const missingCalendars = (localUser.calendars || []).filter(
+          (c) => !pgUrls.has(c.url)
+        );
+        if (missingCalendars.length > 0) {
+          const mergedUser: UserCalendarConfig = {
+            ...pgUser,
+            calendars: [...pgUser.calendars, ...missingCalendars],
+            updatedAt: new Date().toISOString(),
+          };
+          await upsertUserToPostgres(pool, mergedUser);
+          pgData.users[userId] = mergedUser;
+        }
+      }
+
+      this.data.users = { ...localUsers, ...pgData.users };
+      this.data.sentReminders = {
+        ...this.data.sentReminders,
+        ...pgData.sentReminders,
+      };
+      this.persist();
+      this.pool = pool;
+
+      console.log(
+        `🐘 Connected to Neon PostgreSQL database (${Object.keys(this.data.users).length} users loaded/migrated)`
+      );
+    } catch (err) {
+      console.error('❌ Failed to connect to Neon PostgreSQL database:', err);
+      console.log('📦 Falling back to local JSON database.');
+      await pool.end().catch(() => {});
     }
   }
 
@@ -214,12 +174,13 @@ class Storage {
   }
 
   public async close(): Promise<void> {
-    if (this.pool) {
-      const activePool = this.pool;
-      this.pool = null;
-      await activePool.end();
-      console.log('🔌 Neon PostgreSQL connection pool closed.');
-    }
+    if (!this.pool) return;
+    const activePool = this.pool;
+    this.pool = null;
+    // Let queued writes land before the pool goes away.
+    await this.pgWriteChain;
+    await activePool.end();
+    console.log('🔌 Neon PostgreSQL connection pool closed.');
   }
 
   public getBackup(): DatabaseSchema {
@@ -232,97 +193,56 @@ class Storage {
   private persist() {
     try {
       const tempPath = `${this.filePath}.tmp`;
-      const jsonStr = JSON.stringify(this.data, null, 2);
-      fs.writeFileSync(tempPath, jsonStr, 'utf-8');
+      fs.writeFileSync(tempPath, JSON.stringify(this.data, null, 2), 'utf-8');
       fs.renameSync(tempPath, this.filePath);
-      if (Object.keys(this.data.users).length > 0) {
-        console.log(`💾 Saved database (${Object.keys(this.data.users).length} users)`);
-      }
     } catch (err) {
       console.error('Failed to persist database:', err);
     }
   }
 
+  /**
+   * Serializes Postgres writes so a delete can never be overtaken by an
+   * earlier upsert for the same user (which would resurrect the row).
+   */
+  private enqueuePgWrite(description: string, write: (pool: Pool) => Promise<void>) {
+    const activePool = this.pool;
+    if (!activePool) return;
+    this.pgWriteChain = this.pgWriteChain
+      .then(() => write(activePool))
+      .catch((err) => {
+        console.error(`Failed to ${description} in Neon PostgreSQL:`, err);
+      });
+  }
+
   public getUser(userId: string): UserCalendarConfig | undefined {
-    if (userId === 'demo-user') {
+    if (userId === DEMO_USER_ID) {
       return this.ensureDemoUser();
     }
     const user = this.data.users[userId];
-    if (user && !user.calendars) {
-      user.calendars = [];
-      if (user.icalUrl) {
-        user.calendars.push({
-          id: 'primary',
-          name: 'Primary',
-          url: user.icalUrl,
-          addedAt: user.createdAt || new Date().toISOString(),
-        });
-      }
-    }
-    return user;
+    return user ? normalizeUserCalendars(user) : undefined;
   }
 
   public getAllUsers(): UserCalendarConfig[] {
-    return Object.values(this.data.users).map((u) => {
-      if (!u.calendars) {
-        u.calendars = [];
-        if (u.icalUrl) {
-          u.calendars.push({
-            id: 'primary',
-            name: 'Primary',
-            url: u.icalUrl,
-            addedAt: u.createdAt || new Date().toISOString(),
-          });
-        }
-      }
-      return u;
-    });
+    return Object.values(this.data.users).map(normalizeUserCalendars);
   }
 
   public saveUser(user: UserCalendarConfig): void {
-    if (!user.calendars) {
-      user.calendars = [];
-      if (user.icalUrl) {
-        user.calendars.push({
-          id: 'primary',
-          name: 'Primary',
-          url: user.icalUrl,
-          addedAt: user.createdAt || new Date().toISOString(),
-        });
-      }
-    }
+    normalizeUserCalendars(user);
     this.data.users[user.userId] = user;
     this.persist();
-
-    if (this.pool) {
-      const activePool = this.pool;
-      this.pgWriteChain = this.pgWriteChain
-        .then(() => upsertUserToPostgres(activePool, user))
-        .catch((err) => {
-          console.error(
-            `Failed to sync user ${user.userId} to Neon PostgreSQL:`,
-            err
-          );
-        });
-    }
+    this.enqueuePgWrite(`sync user ${user.userId}`, (pool) =>
+      upsertUserToPostgres(pool, user)
+    );
   }
 
   public deleteUser(userId: string): boolean {
-    if (this.data.users[userId]) {
-      delete this.data.users[userId];
-      this.persist();
-
-      if (this.pool) {
-        deleteUserFromPostgres(this.pool, userId).catch((err) => {
-          console.error(
-            `Failed to delete user ${userId} from Neon PostgreSQL:`,
-            err
-          );
-        });
-      }
-      return true;
-    }
-    return false;
+    if (!this.data.users[userId]) return false;
+    delete this.data.users[userId];
+    this.persist();
+    this.enqueuePgWrite(`delete user ${userId}`, (pool) =>
+      deleteUserFromPostgres(pool, userId)
+    );
+    return true;
   }
 
   public addCalendar(
@@ -331,30 +251,24 @@ class Storage {
     url: string,
     reminderMinutes = 10
   ): LinkedCalendar {
-    let user = this.getUser(userId);
     const now = new Date().toISOString();
+    const user: UserCalendarConfig = this.getUser(userId) ?? {
+      userId,
+      calendars: [],
+      reminderMinutes,
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    if (!user) {
-      user = {
-        userId,
-        calendars: [],
-        reminderMinutes,
-        enabled: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-    }
-
-    // Check if URL already exists
-    const existingIndex = user.calendars.findIndex((c) => c.url === url);
-    const calendarId = `cal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newCal: LinkedCalendar = {
-      id: calendarId,
+      id: `cal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name: name || `Calendar ${user.calendars.length + 1}`,
       url,
       addedAt: now,
     };
 
+    const existingIndex = user.calendars.findIndex((c) => c.url === url);
     if (existingIndex >= 0) {
       user.calendars[existingIndex] = newCal;
     } else {
@@ -373,27 +287,26 @@ class Storage {
     if (!identifier || identifier.toLowerCase() === 'all') {
       user.calendars = [];
       delete user.icalUrl;
+      user.updatedAt = new Date().toISOString();
       this.saveUser(user);
       return true;
     }
 
+    const target = identifier.toLowerCase();
     const initialLen = user.calendars.length;
     user.calendars = user.calendars.filter(
-      (c) =>
-        c.id.toLowerCase() !== identifier.toLowerCase() &&
-        c.name.toLowerCase() !== identifier.toLowerCase()
+      (c) => c.id.toLowerCase() !== target && c.name.toLowerCase() !== target
     );
+    if (user.calendars.length === initialLen) return false;
 
-    if (user.calendars.length !== initialLen) {
-      if (user.calendars.length === 0) {
-        delete user.icalUrl;
-      } else {
-        user.icalUrl = user.calendars[0].url;
-      }
-      this.saveUser(user);
-      return true;
+    if (user.calendars.length === 0) {
+      delete user.icalUrl;
+    } else {
+      user.icalUrl = user.calendars[0].url;
     }
-    return false;
+    user.updatedAt = new Date().toISOString();
+    this.saveUser(user);
+    return true;
   }
 
   public hasReminderBeenSent(
@@ -401,8 +314,7 @@ class Storage {
     eventId: string,
     leadMinutes: number
   ): boolean {
-    const key = `${userId}:${eventId}:${leadMinutes}`;
-    return Boolean(this.data.sentReminders[key]);
+    return Boolean(this.data.sentReminders[reminderKey(userId, eventId, leadMinutes)]);
   }
 
   public markReminderSent(
@@ -410,19 +322,13 @@ class Storage {
     eventId: string,
     leadMinutes: number
   ): void {
-    const key = `${userId}:${eventId}:${leadMinutes}`;
+    const key = reminderKey(userId, eventId, leadMinutes);
     const now = Date.now();
     this.data.sentReminders[key] = now;
     this.persist();
-
-    if (this.pool) {
-      upsertReminderToPostgres(this.pool, key, now).catch((err) => {
-        console.error(
-          `Failed to record sent reminder ${key} in Neon PostgreSQL:`,
-          err
-        );
-      });
-    }
+    this.enqueuePgWrite(`record sent reminder ${key}`, (pool) =>
+      upsertReminderToPostgres(pool, key, now)
+    );
   }
 
   public cleanupOldReminders(daysToKeep = 7): void {
@@ -437,15 +343,9 @@ class Storage {
     if (changed) {
       this.persist();
     }
-
-    if (this.pool) {
-      cleanupRemindersInPostgres(this.pool, cutoff).catch((err) => {
-        console.error(
-          'Failed to cleanup old reminders in Neon PostgreSQL:',
-          err
-        );
-      });
-    }
+    this.enqueuePgWrite('clean up old reminders', (pool) =>
+      cleanupRemindersInPostgres(pool, cutoff)
+    );
   }
 }
 

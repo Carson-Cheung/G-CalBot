@@ -1,5 +1,6 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { UserCalendarConfig } from '../types';
+import { resolveUserCalendars } from './userDefaults';
 
 /**
  * Creates and configures a PostgreSQL connection pool with SSL enabled for Neon PostgreSQL.
@@ -10,19 +11,28 @@ export function createPostgresPool(connectionString: string): Pool {
     normalizedUrl.includes('sslmode=require') &&
     !normalizedUrl.includes('uselibpqcompat=')
   ) {
-    normalizedUrl += '&uselibpqcompat=true';
+    normalizedUrl += `${normalizedUrl.includes('?') ? '&' : '?'}uselibpqcompat=true`;
   }
-  return new Pool({
+  const pool = new Pool({
     connectionString: normalizedUrl,
     ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
   });
+  // Neon drops idle connections; without a listener pg re-emits that as an
+  // unhandled 'error' event and crashes the process.
+  pool.on('error', (err) => {
+    console.error('PostgreSQL idle client error:', err.message);
+  });
+  return pool;
 }
 
 /**
  * Initializes the normalized relational schema in PostgreSQL if tables do not exist.
  */
 export async function initPostgresSchema(pool: Pool): Promise<void> {
-  const schemaQuery = `
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       user_id TEXT PRIMARY KEY,
       reminder_minutes INTEGER NOT NULL DEFAULT 10,
@@ -49,9 +59,39 @@ export async function initPostgresSchema(pool: Pool): Promise<void> {
       reminder_key TEXT PRIMARY KEY,
       sent_at BIGINT NOT NULL
     );
-  `;
 
-  await pool.query(schemaQuery);
+    CREATE INDEX IF NOT EXISTS sent_reminders_sent_at_idx ON sent_reminders (sent_at);
+  `);
+}
+
+function toIsoString(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+interface UserRow {
+  user_id: string;
+  reminder_minutes: number;
+  enabled: boolean;
+  ical_url: string | null;
+  daily_digest_enabled: boolean;
+  daily_digest_time: string | null;
+  timezone: string | null;
+  last_daily_digest_date: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+interface CalendarRow {
+  id: string;
+  user_id: string;
+  name: string;
+  url: string;
+  added_at: Date | string;
+}
+
+interface ReminderRow {
+  reminder_key: string;
+  sent_at: string | number;
 }
 
 /**
@@ -61,43 +101,20 @@ export async function loadAllFromPostgres(pool: Pool): Promise<{
   users: Record<string, UserCalendarConfig>;
   sentReminders: Record<string, number>;
 }> {
-  const usersResult = await pool.query<{
-    user_id: string;
-    reminder_minutes: number;
-    enabled: boolean;
-    ical_url: string | null;
-    daily_digest_enabled: boolean;
-    daily_digest_time: string | null;
-    timezone: string | null;
-    last_daily_digest_date: string | null;
-    created_at: Date | string;
-    updated_at: Date | string;
-  }>(`
-    SELECT user_id, reminder_minutes, enabled, ical_url,
-           daily_digest_enabled, daily_digest_time, timezone,
-           last_daily_digest_date, created_at, updated_at
-    FROM users;
-  `);
-
-  const calendarsResult = await pool.query<{
-    id: string;
-    user_id: string;
-    name: string;
-    url: string;
-    added_at: Date | string;
-  }>(`
-    SELECT id, user_id, name, url, added_at
-    FROM linked_calendars
-    ORDER BY added_at ASC;
-  `);
-
-  const remindersResult = await pool.query<{
-    reminder_key: string;
-    sent_at: string | number;
-  }>(`
-    SELECT reminder_key, sent_at
-    FROM sent_reminders;
-  `);
+  const [usersResult, calendarsResult, remindersResult] = await Promise.all([
+    pool.query<UserRow>(`
+      SELECT user_id, reminder_minutes, enabled, ical_url,
+             daily_digest_enabled, daily_digest_time, timezone,
+             last_daily_digest_date, created_at, updated_at
+      FROM users;
+    `),
+    pool.query<CalendarRow>(`
+      SELECT id, user_id, name, url, added_at
+      FROM linked_calendars
+      ORDER BY added_at ASC;
+    `),
+    pool.query<ReminderRow>('SELECT reminder_key, sent_at FROM sent_reminders;'),
+  ]);
 
   const users: Record<string, UserCalendarConfig> = {};
 
@@ -111,44 +128,23 @@ export async function loadAllFromPostgres(pool: Pool): Promise<{
       dailyDigestTime: row.daily_digest_time || undefined,
       timezone: row.timezone || undefined,
       lastDailyDigestDate: row.last_daily_digest_date || undefined,
-      createdAt:
-        row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : String(row.created_at),
-      updatedAt:
-        row.updated_at instanceof Date
-          ? row.updated_at.toISOString()
-          : String(row.updated_at),
+      createdAt: toIsoString(row.created_at),
+      updatedAt: toIsoString(row.updated_at),
       calendars: [],
     };
   }
 
   for (const calRow of calendarsResult.rows) {
-    if (users[calRow.user_id]) {
-      const addedAt =
-        calRow.added_at instanceof Date
-          ? calRow.added_at.toISOString()
-          : String(calRow.added_at);
-
-      users[calRow.user_id].calendars.push({
-        id: calRow.id,
-        name: calRow.name,
-        url: calRow.url,
-        addedAt,
-      });
-    }
+    users[calRow.user_id]?.calendars.push({
+      id: calRow.id,
+      name: calRow.name,
+      url: calRow.url,
+      addedAt: toIsoString(calRow.added_at),
+    });
   }
 
-  // Backwards compatibility: if no linked calendars exist but icalUrl does
   for (const user of Object.values(users)) {
-    if (user.calendars.length === 0 && user.icalUrl) {
-      user.calendars.push({
-        id: 'primary',
-        name: 'Primary',
-        url: user.icalUrl,
-        addedAt: user.createdAt,
-      });
-    }
+    user.calendars = resolveUserCalendars(user);
   }
 
   const sentReminders: Record<string, number> = {};
@@ -166,65 +162,45 @@ export async function upsertUserToPostgres(
   pool: Pool,
   user: UserCalendarConfig
 ): Promise<void> {
-  const client: PoolClient = await pool.connect();
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const userUpsertQuery = `
-      INSERT INTO users (
-        user_id, reminder_minutes, enabled, ical_url,
-        daily_digest_enabled, daily_digest_time, timezone,
-        last_daily_digest_date, created_at, updated_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      ON CONFLICT (user_id) DO UPDATE SET
-        reminder_minutes = EXCLUDED.reminder_minutes,
-        enabled = EXCLUDED.enabled,
-        ical_url = EXCLUDED.ical_url,
-        daily_digest_enabled = EXCLUDED.daily_digest_enabled,
-        daily_digest_time = EXCLUDED.daily_digest_time,
-        timezone = EXCLUDED.timezone,
-        last_daily_digest_date = EXCLUDED.last_daily_digest_date,
-        updated_at = EXCLUDED.updated_at;
-    `;
+    await client.query(
+      `INSERT INTO users (
+         user_id, reminder_minutes, enabled, ical_url,
+         daily_digest_enabled, daily_digest_time, timezone,
+         last_daily_digest_date, created_at, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (user_id) DO UPDATE SET
+         reminder_minutes = EXCLUDED.reminder_minutes,
+         enabled = EXCLUDED.enabled,
+         ical_url = EXCLUDED.ical_url,
+         daily_digest_enabled = EXCLUDED.daily_digest_enabled,
+         daily_digest_time = EXCLUDED.daily_digest_time,
+         timezone = EXCLUDED.timezone,
+         last_daily_digest_date = EXCLUDED.last_daily_digest_date,
+         updated_at = EXCLUDED.updated_at;`,
+      [
+        user.userId,
+        user.reminderMinutes ?? 10,
+        user.enabled ?? true,
+        user.icalUrl || null,
+        user.dailyDigestEnabled ?? false,
+        user.dailyDigestTime || null,
+        user.timezone || null,
+        user.lastDailyDigestDate || null,
+        user.createdAt ? new Date(user.createdAt) : new Date(),
+        user.updatedAt ? new Date(user.updatedAt) : new Date(),
+      ]
+    );
 
-    const createdAt = user.createdAt ? new Date(user.createdAt) : new Date();
-    const updatedAt = user.updatedAt ? new Date(user.updatedAt) : new Date();
-
-    await client.query(userUpsertQuery, [
-      user.userId,
-      user.reminderMinutes ?? 10,
-      user.enabled ?? true,
-      user.icalUrl || null,
-      user.dailyDigestEnabled ?? false,
-      user.dailyDigestTime || null,
-      user.timezone || null,
-      user.lastDailyDigestDate || null,
-      createdAt,
-      updatedAt,
-    ]);
-
-    // Replace linked calendars for this user
     await client.query('DELETE FROM linked_calendars WHERE user_id = $1;', [
       user.userId,
     ]);
 
-    const calendarsToInsert =
-      user.calendars && user.calendars.length > 0
-        ? user.calendars
-        : user.icalUrl
-          ? [
-              {
-                id: 'primary',
-                name: 'Primary',
-                url: user.icalUrl,
-                addedAt: user.createdAt || new Date().toISOString(),
-              },
-            ]
-          : [];
-
-    for (const cal of calendarsToInsert) {
-      const addedAt = cal.addedAt ? new Date(cal.addedAt) : new Date();
+    for (const cal of resolveUserCalendars(user)) {
       await client.query(
         `INSERT INTO linked_calendars (id, user_id, name, url, added_at)
          VALUES ($1, $2, $3, $4, $5)
@@ -232,13 +208,20 @@ export async function upsertUserToPostgres(
            name = EXCLUDED.name,
            url = EXCLUDED.url,
            added_at = EXCLUDED.added_at;`,
-        [cal.id, user.userId, cal.name, cal.url, addedAt]
+        [
+          cal.id,
+          user.userId,
+          cal.name,
+          cal.url,
+          cal.addedAt ? new Date(cal.addedAt) : new Date(),
+        ]
       );
     }
 
     await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK');
+    // A failed ROLLBACK must not hide the error that caused it.
+    await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     client.release();

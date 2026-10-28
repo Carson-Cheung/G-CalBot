@@ -1,124 +1,138 @@
-import { Router, Request, Response } from "express";
-import { config } from "../../config";
-import { createSessionToken, verifySessionToken } from "../../utils/session";
-import { activityLogger, censorUsername } from "../../utils/activityLogger";
+import { Router, Request, Response } from 'express';
+import { config } from '../../config';
+import { createSessionToken } from '../../utils/session';
+import { activityLogger, censorUsername } from '../../utils/activityLogger';
+import { DEMO_USER_ID, getRequestSession } from '../requestAuth';
+
+const DISCORD_API = 'https://discord.com/api';
+const DISCORD_TIMEOUT_MS = 10_000;
+const MAX_OAUTH_CODE_LENGTH = 512;
+
+interface DiscordUser {
+  id: string;
+  username: string;
+  global_name?: string | null;
+  avatar?: string | null;
+}
+
+function discordAvatarUrl(user: DiscordUser): string {
+  if (user.avatar) {
+    return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
+  }
+  try {
+    const defaultIndex = (BigInt(user.id) >> 22n) % 6n;
+    return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+  } catch {
+    return 'https://cdn.discordapp.com/embed/avatars/0.png';
+  }
+}
+
+async function exchangeCodeForAccessToken(code: string): Promise<string | null> {
+  const response = await fetch(`${DISCORD_API}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      grant_type: 'authorization_code',
+      code,
+    }),
+    signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    console.warn(`Discord OAuth code exchange rejected (HTTP ${response.status})`);
+    return null;
+  }
+  const data = (await response.json()) as { access_token?: unknown };
+  return typeof data.access_token === 'string' ? data.access_token : null;
+}
+
+async function fetchDiscordUser(accessToken: string): Promise<DiscordUser | null> {
+  const response = await fetch(`${DISCORD_API}/users/@me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
+  });
+  if (!response.ok) return null;
+  const user = (await response.json()) as Partial<DiscordUser>;
+  if (typeof user.id !== 'string' || typeof user.username !== 'string') return null;
+  return user as DiscordUser;
+}
 
 export const authRouter = Router();
 
-// App public config
-authRouter.get(["/config", "/auth/config"], (_req: Request, res: Response) => {
+authRouter.get(['/config', '/auth/config'], (_req: Request, res: Response) => {
   res.json({ clientId: config.clientId });
 });
 
-// Discord Activity OAuth2 token exchange
-authRouter.post("/token", async (req: Request, res: Response) => {
-  const { code } = req.body;
-  if (!code) {
-    return res.status(400).json({ error: "Missing code parameter" });
+// Exchanges a Discord Activity OAuth2 code for our own signed session. The Discord
+// access token stays server-side because the client only needs the session token.
+authRouter.post('/token', async (req: Request, res: Response) => {
+  const code = req.body?.code;
+  if (typeof code !== 'string' || !code || code.length > MAX_OAUTH_CODE_LENGTH) {
+    return res.status(400).json({ error: 'Missing code parameter' });
+  }
+  if (!config.clientId || !config.clientSecret) {
+    return res.status(503).json({ error: 'Discord sign-in is not configured on this server' });
   }
 
   try {
-    const response = await fetch("https://discord.com/api/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
-        grant_type: "authorization_code",
-        code: code,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(response.status).json(data);
+    const accessToken = await exchangeCodeForAccessToken(code);
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Discord rejected the authorization code' });
+    }
+    const user = await fetchDiscordUser(accessToken);
+    if (!user) {
+      return res.status(502).json({ error: 'Could not load your Discord profile' });
     }
 
-    // Fetch user profile from Discord using the new access_token
-    let user: any = null;
-    let sessionToken: string | null = null;
-    try {
-      const userRes = await fetch("https://discord.com/api/users/@me", {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      if (userRes.ok) {
-        user = await userRes.json();
-      }
-    } catch (uErr) {
-      console.error("Failed to fetch user with access_token:", uErr);
-    }
+    const displayName = user.global_name || user.username;
+    const avatarUrl = discordAvatarUrl(user);
+    const sessionToken = createSessionToken({ userId: user.id, username: displayName, avatarUrl });
 
-    if (user && user.id) {
-      let avatarUrl: string | undefined = undefined;
-      if (user.avatar) {
-        avatarUrl = `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
-      } else {
-        try {
-          const defaultIndex = (BigInt(user.id) >> 22n) % 6n;
-          avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
-        } catch {
-          avatarUrl = "https://cdn.discordapp.com/embed/avatars/0.png";
-        }
-      }
+    activityLogger.log('system', '📱', `Discord Activity authenticated for ${censorUsername(displayName)}`);
 
-      sessionToken = createSessionToken({
-        userId: user.id,
-        username: user.global_name || user.username,
+    res.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        global_name: user.global_name ?? null,
+        avatar: user.avatar ?? null,
         avatarUrl,
-      });
-
-      activityLogger.log(
-        "system",
-        "📱",
-        `Discord Activity authenticated for ${censorUsername(user.global_name || user.username)}`,
-      );
-    }
-
-    res.json({ ...data, user, sessionToken });
-  } catch (err: any) {
-    console.error("OAuth token exchange error:", err);
-    res.status(500).json({ error: "Token exchange failed" });
+      },
+      sessionToken,
+    });
+  } catch (err) {
+    console.error('OAuth token exchange error:', err);
+    res.status(502).json({ error: 'Token exchange failed' });
   }
 });
 
-// Verify current session token
-authRouter.get(["/auth/session", "/session"], (req: Request, res: Response) => {
-  const authHeader = req.headers.authorization;
-  let token: string | null = null;
-  if (typeof authHeader === "string" && authHeader.trim()) {
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    token = match ? match[1].trim() : authHeader.trim();
-  }
-
-  const payload = verifySessionToken(token);
-  if (payload) {
-    if (req.query.initial === "true") {
+authRouter.get(['/auth/session', '/session'], (req: Request, res: Response) => {
+  const session = getRequestSession(req);
+  if (session) {
+    if (req.query.initial === 'true') {
       activityLogger.log(
-        "system",
-        "🌐",
-        `Discord Activity web dashboard connected for ${censorUsername(payload.username)}`,
+        'system',
+        '🌐',
+        `Discord Activity web dashboard connected for ${censorUsername(session.username)}`
       );
     }
-    return res.json({ authenticated: true, user: payload });
+    return res.json({ authenticated: true, user: session });
   }
 
   return res.json({
     authenticated: false,
-    user: { userId: "demo-user", username: "Demo Showcase" },
+    user: { userId: DEMO_USER_ID, username: 'Demo Showcase' },
   });
 });
 
-// Discord Activity demo launch notification endpoint
-authRouter.post(
-  ["/auth/activity-handoff", "/activity-handoff"],
-  (_req: Request, res: Response) => {
-    activityLogger.log(
-      "system",
-      "📱",
-      "Discord Activity launched demo/guest session............. Was that you? ;)",
-    );
-    return res.json({ authenticated: false });
-  },
-);
+authRouter.post(['/auth/activity-handoff', '/activity-handoff'], (_req: Request, res: Response) => {
+  activityLogger.log(
+    'system',
+    '📱',
+    'Discord Activity launched demo/guest session............. Was that you? ;)'
+  );
+  return res.json({ authenticated: false });
+});
 
 export default authRouter;

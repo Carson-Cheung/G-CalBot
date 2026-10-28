@@ -1,48 +1,40 @@
-import { ChatInputCommandInteraction } from "discord.js";
-import { storage } from "../../../../db/storage";
-import { ReminderEngine } from "../../../../calendar/reminderEngine";
+import { ChatInputCommandInteraction } from 'discord.js';
+import { storage } from '../../../../db/storage';
+import { ReminderEngine } from '../../../../calendar/reminderEngine';
+import { EPHEMERAL } from '../../../helpers';
 
 export async function handleUnlink(
   interaction: ChatInputCommandInteraction,
-  reminderEngine?: ReminderEngine,
+  reminderEngine: ReminderEngine,
 ) {
   const userId = interaction.user.id;
-  const calendarTarget = interaction.options.getString("calendar");
+  const calendarTarget = interaction.options.getString('calendar')?.trim();
   const user = storage.getUser(userId);
 
   if (!user || user.calendars.length === 0) {
     return interaction.reply({
-      content: "ℹ️ You do not currently have any calendars linked.",
-      ephemeral: true,
+      content: 'ℹ️ You do not currently have any calendars linked.',
+      flags: EPHEMERAL,
     });
   }
 
-  if (calendarTarget) {
-    const removed = storage.removeCalendar(userId, calendarTarget);
-    if (reminderEngine) {
-      reminderEngine.invalidateUserCache(userId);
-    }
-
-    if (removed) {
-      return interaction.reply({
-        content: `✅ Calendar **${calendarTarget}** has been removed.`,
-        ephemeral: true,
-      });
-    } else {
-      return interaction.reply({
-        content: `⚠️ Could not find a calendar named \`${calendarTarget}\`. Use \`/cal list\` to view your calendars.`,
-        ephemeral: true,
-      });
-    }
-  } else {
+  if (!calendarTarget) {
     storage.removeCalendar(userId);
-    if (reminderEngine) {
-      reminderEngine.invalidateUserCache(userId);
-    }
+    reminderEngine.invalidateUserCache(userId);
     return interaction.reply({
       content:
-        "✅ All your connected Google Calendars have been unlinked and reminders disabled.",
-      ephemeral: true,
+        '✅ All your connected Google Calendars have been unlinked and reminders disabled.',
+      flags: EPHEMERAL,
     });
   }
+
+  const removed = storage.removeCalendar(userId, calendarTarget);
+  reminderEngine.invalidateUserCache(userId);
+
+  return interaction.reply({
+    content: removed
+      ? `✅ Calendar **${calendarTarget}** has been removed.`
+      : `⚠️ Could not find a calendar named \`${calendarTarget}\`. Use \`/cal list\` to view your calendars.`,
+    flags: EPHEMERAL,
+  });
 }

@@ -37,7 +37,7 @@ export async function deployCommands(): Promise<void> {
   }
 }
 
-// Support direct execution via tsx src/bot/deploy-commands.ts
+// Allow running directly via tsx src/bot/deploy-commands.ts
 if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('deploy-commands.ts')) {
   deployCommands();
 }

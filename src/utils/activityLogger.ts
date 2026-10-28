@@ -30,11 +30,13 @@ export function censorUsername(name?: string | null): string {
 }
 
 const MAX_LOGS = 15;
+const MAX_MESSAGE_LENGTH = 300;
+const INSTANCE_ID = process.env.RENDER_INSTANCE_ID?.slice(-5) || 'rgl9d';
 
 export class ActivityLogger {
   private logs: ActivityLogEntry[] = [];
   private counter = 0;
-  private isPrePopulated = true;
+  private isPrePopulated = false;
 
   constructor() {
     this.prepopulate();
@@ -89,7 +91,7 @@ export class ActivityLogger {
       return {
         id: `act_${this.counter}`,
         timestamp: new Date(baseTime + evt.offsetMs).toISOString(),
-        instanceId: process.env.RENDER_INSTANCE_ID?.slice(-5) || 'rgl9d',
+        instanceId: INSTANCE_ID,
         type: evt.type,
         icon: evt.icon,
         message: evt.message,
@@ -115,15 +117,15 @@ export class ActivityLogger {
 
     // Sanitize control characters and newlines to prevent log injection
     const sanitizedMessage = String(message)
-      .replace(/[\r\n\x1b\x00-\x1f]/g, ' ')
+      .replace(/[\x00-\x1f\x7f]/g, ' ')
       .trim()
-      .slice(0, 300);
+      .slice(0, MAX_MESSAGE_LENGTH);
 
     this.counter++;
     const entry: ActivityLogEntry = {
       id: `act_${Date.now()}_${this.counter}`,
       timestamp: new Date().toISOString(),
-      instanceId: process.env.RENDER_INSTANCE_ID?.slice(-5) || 'rgl9d',
+      instanceId: INSTANCE_ID,
       type,
       icon,
       message: sanitizedMessage,

@@ -1,5 +1,3 @@
-// Constants for slash command identifiers
-
 export const COMMAND_NAMES = {
   CALENDAR: 'calendar',
   CAL: 'cal',
@@ -14,12 +12,22 @@ export const EMBED_COLORS = {
   GOOGLE_BLUE: 0x4285f4,
   GOOGLE_GREEN: 0x34a853,
   DISCORD_BLURPLE: 0x5865f2,
-  WARNING: 0xfbbc05,
-  ERROR: 0xea4335,
 } as const;
 
 export const DEFAULT_TIMEZONE = 'America/New_York';
+export const DEFAULT_REMINDER_MINUTES = 10;
+export const DEFAULT_DIGEST_TIME = '08:00';
+export const GOOGLE_CALENDAR_URL = 'https://calendar.google.com';
 
-// Backwards compatibility aliases
-export const COMMANDS = COMMAND_NAMES;
-export type CommandName = (typeof COMMAND_NAMES)[keyof typeof COMMAND_NAMES];
+export const VIEW_WINDOW_DAYS = 7;
+export const VIEW_MAX_EVENTS = 10;
+export const SHARE_MAX_EVENTS = 15;
+export const LINK_PREVIEW_EVENTS = 3;
+
+// Discord embed field names are capped at 256 characters.
+export const EMBED_FIELD_NAME_MAX = 256;
+
+// Guild install (0) and user install (1).
+export const INTEGRATION_TYPES = [0, 1];
+// Guild (0), bot DM (1) and private channel (2).
+export const COMMAND_CONTEXTS = [0, 1, 2];

@@ -1,16 +1,17 @@
-import { ChatInputCommandInteraction } from "discord.js";
-import { ReminderEngine } from "../../../calendar/reminderEngine";
-import { COMMAND_NAMES } from "../../const";
-import { buildCalendarCommand } from "./builder";
-import { handleGuide } from "./handlers/guide";
-import { handleLink } from "./handlers/link";
-import { handleList } from "./handlers/list";
-import { handleUnlink } from "./handlers/unlink";
-import { handleSettings } from "./handlers/settings";
-import { handleView } from "./handlers/view";
-import { handleTest } from "./handlers/test";
-import { handleShare } from "./handlers/share";
-import { handleDaily } from "./handlers/daily";
+import { ChatInputCommandInteraction } from 'discord.js';
+import { ReminderEngine } from '../../../calendar/reminderEngine';
+import { COMMAND_NAMES } from '../../const';
+import { EPHEMERAL } from '../../helpers';
+import { buildCalendarCommand } from './builder';
+import { handleGuide } from './handlers/guide';
+import { handleLink } from './handlers/link';
+import { handleList } from './handlers/list';
+import { handleUnlink } from './handlers/unlink';
+import { handleSettings } from './handlers/settings';
+import { handleView } from './handlers/view';
+import { handleTest } from './handlers/test';
+import { handleShare } from './handlers/share';
+import { handleDaily } from './handlers/daily';
 
 async function executeCalendar(
   interaction: ChatInputCommandInteraction,
@@ -19,28 +20,28 @@ async function executeCalendar(
   const subcommand = interaction.options.getSubcommand();
 
   switch (subcommand) {
-    case "guide":
+    case 'guide':
       return handleGuide(interaction);
-    case "link":
+    case 'link':
       return handleLink(interaction, reminderEngine);
-    case "list":
+    case 'list':
       return handleList(interaction);
-    case "unlink":
+    case 'unlink':
       return handleUnlink(interaction, reminderEngine);
-    case "settings":
+    case 'settings':
       return handleSettings(interaction);
-    case "view":
+    case 'view':
       return handleView(interaction, reminderEngine);
-    case "test":
+    case 'test':
       return handleTest(interaction, reminderEngine);
-    case "share":
+    case 'share':
       return handleShare(interaction, reminderEngine);
-    case "daily":
+    case 'daily':
       return handleDaily(interaction, reminderEngine);
     default:
       return interaction.reply({
         content: `Unknown subcommand: ${subcommand}`,
-        ephemeral: true,
+        flags: EPHEMERAL,
       });
   }
 }

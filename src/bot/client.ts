@@ -1,9 +1,26 @@
-import { Client, Partials, ActivityType, Events } from 'discord.js';
-import { GatewayIntentBits } from 'discord-api-types/v10';
+import {
+  Client,
+  Partials,
+  ActivityType,
+  Events,
+  GatewayIntentBits,
+  ChatInputCommandInteraction,
+} from 'discord.js';
 import { commandsMap } from './commands';
 import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
+import { replyError } from './helpers';
+
+function describeCommand(interaction: ChatInputCommandInteraction): string {
+  const parts = [
+    interaction.commandName,
+    interaction.options.getSubcommandGroup(false),
+    interaction.options.getSubcommand(false),
+  ].filter(Boolean);
+  const context = interaction.guildId ? 'guild' : 'DM';
+  return `/${parts.join(' ')} (${context})`;
+}
 
 export function createBot() {
   const client = new Client({
@@ -22,67 +39,38 @@ export function createBot() {
     });
     reminderEngine.start();
 
-    // Register slash commands globally
     await deployCommands();
   });
 
-  // Dynamic Command Dispatcher
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    let subcommandGroup: string | null = null;
-    let subcommand: string | null = null;
-    try {
-      subcommandGroup = interaction.options.getSubcommandGroup(false);
-    } catch {
-      subcommandGroup = null;
-    }
-    try {
-      subcommand = interaction.options.getSubcommand(false);
-    } catch {
-      subcommand = null;
+    const description = describeCommand(interaction);
+    const command = commandsMap.get(interaction.commandName);
+
+    if (!command?.execute) {
+      console.warn(`Unrecognized command received: ${interaction.commandName}`);
+      activityLogger.log('warn', '⚠️', `Unrecognized command received: ${description}`);
+      return;
     }
 
-    const commandParts = [interaction.commandName];
-    if (subcommandGroup) commandParts.push(subcommandGroup);
-    if (subcommand) commandParts.push(subcommand);
-
-    const commandPath = `/${commandParts.join(' ')}`;
-    const context = interaction.guildId ? 'guild' : 'DM';
-
     try {
-      const command = commandsMap.get(interaction.commandName);
-      if (command && typeof command.execute === 'function') {
-        const userMention = censorUsername(
-          interaction.user.globalName || interaction.user.username
-        );
-        activityLogger.log(
-          'command',
-          '⚡',
-          `Executed slash command by ${userMention}: ${commandPath} (${context})`
-        );
-        await command.execute(interaction, reminderEngine);
-      } else {
-        console.warn(`Unrecognized command received: ${interaction.commandName}`);
-        activityLogger.log(
-          'warn',
-          '⚠️',
-          `Unrecognized command received: ${commandPath} (${context})`
-        );
-      }
+      const userMention = censorUsername(
+        interaction.user.globalName || interaction.user.username,
+      );
+      activityLogger.log(
+        'command',
+        '⚡',
+        `Executed slash command by ${userMention}: ${description}`,
+      );
+      await command.execute(interaction, reminderEngine);
     } catch (err) {
       console.error('Error handling slash command:', err);
-      activityLogger.log(
-        'warn',
-        '⚠️',
-        `Error executing slash command: ${commandPath} (${context})`
+      activityLogger.log('warn', '⚠️', `Error executing slash command: ${description}`);
+      await replyError(
+        interaction,
+        'An error occurred while executing this command.',
       );
-      const replyFn =
-        interaction.replied || interaction.deferred ? 'followUp' : 'reply';
-      await interaction[replyFn]({
-        content: 'An error occurred while executing this command.',
-        ephemeral: true,
-      }).catch(() => {});
     }
   });
 
