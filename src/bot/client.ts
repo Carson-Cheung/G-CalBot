@@ -36,7 +36,7 @@ export function createBot() {
     const botTag = client.user?.tag || 'G-CalBot#2765';
     console.log(`🤖 Discord bot logged in as ${botTag}!`);
     activityLogger.log('system', '🤖', `Discord bot logged in as ${botTag}!`);
-    client.user?.setActivity('/cal guide | 📅 Syncing', {
+    client.user?.setActivity('/comms | 📅 Syncing', {
       type: ActivityType.Watching,
     });
     reminderEngine.start();
