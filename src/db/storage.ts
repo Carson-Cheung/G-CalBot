@@ -235,9 +235,14 @@ class Storage {
     );
   }
 
+  /** Removes everything stored about a user: settings, calendars and sent-reminder records. */
   public deleteUser(userId: string): boolean {
-    if (!this.data.users[userId]) return false;
+    const prefix = `${userId}:`;
+    const reminderKeys = Object.keys(this.data.sentReminders).filter((key) => key.startsWith(prefix));
+    if (!this.data.users[userId] && reminderKeys.length === 0) return false;
+
     delete this.data.users[userId];
+    for (const key of reminderKeys) delete this.data.sentReminders[key];
     this.persist();
     this.enqueuePgWrite(`delete user ${userId}`, (pool) =>
       deleteUserFromPostgres(pool, userId)

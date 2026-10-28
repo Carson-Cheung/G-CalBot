@@ -13,6 +13,10 @@ import { activityLogger, censorUsername } from '../utils/activityLogger';
 import { replyError } from './helpers';
 import { isPagerId } from './pager';
 import { handlePagerInteraction } from './pagerRoutes';
+import {
+  DELETE_DATA_PREFIX,
+  handleDeleteDataButton,
+} from './commands/calendar/handlers/deleteData';
 
 function describeCommand(interaction: ChatInputCommandInteraction): string {
   const parts = [
@@ -45,6 +49,15 @@ export function createBot() {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.isButton() && interaction.customId.startsWith(DELETE_DATA_PREFIX)) {
+      try {
+        await handleDeleteDataButton(interaction, reminderEngine);
+      } catch (err) {
+        console.error('Error handling data deletion:', err);
+      }
+      return;
+    }
+
     if (interaction.isButton() || interaction.isStringSelectMenu()) {
       if (!isPagerId(interaction.customId)) return;
       try {

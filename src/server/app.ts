@@ -108,6 +108,8 @@ export function createServer(reminderEngine?: ReminderEngine): Express {
   if (fs.existsSync(publicDir)) {
     app.use(
       express.static(publicDir, {
+        // Lets /privacy and /terms resolve to their .html files.
+        extensions: ['html'],
         etag: false,
         lastModified: false,
         setHeaders: (res) => {

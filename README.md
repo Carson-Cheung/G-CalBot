@@ -44,6 +44,7 @@ It has two parts:
 | `/open` | `/o` | Get a button that opens Google Calendar | Private |
 | `/dashboard` | `/dash`, `/act` | Launch the Activity dashboard | Channel |
 | `/commands` | `/comms` | List every command | Private |
+| `/calendar deletedata` | `/cal deletedata` | Permanently delete everything the bot stores about you | Private |
 
 ## Connecting a Google Calendar
 
@@ -105,3 +106,6 @@ src/
 - Dashboard sessions are signed tokens. Discord access tokens never reach the browser.
 - API routes are rate limited, and every route checks that you own the data you're reading or changing.
 - Feed URLs are stored in your database, or in `data/` locally, which is never committed.
+- Users can delete everything stored about them with `/cal deletedata`.
+
+See the [Privacy Policy](https://g-calbot.onrender.com/privacy) and [Terms of Service](https://g-calbot.onrender.com/terms).

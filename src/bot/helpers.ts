@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import { GOOGLE_CALENDAR_URL, EMBED_FIELD_NAME_MAX } from './const';
 import { storage } from '../db/storage';
+import { config } from '../config';
 
 export const EPHEMERAL = MessageFlags.Ephemeral;
 
@@ -16,6 +17,15 @@ export function toUnix(date: Date | string | number): number {
 
 export function truncate(text: string, max = EMBED_FIELD_NAME_MAX): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/** Link buttons to the hosted Privacy Policy and Terms of Service pages. */
+export function legalButtons(): ButtonBuilder[] {
+  const base = config.publicUrl.replace(/\/$/, '');
+  return [
+    new ButtonBuilder().setLabel('Privacy Policy').setStyle(ButtonStyle.Link).setURL(`${base}/privacy`),
+    new ButtonBuilder().setLabel('Terms').setStyle(ButtonStyle.Link).setURL(`${base}/terms`),
+  ];
 }
 
 export function openCalendarRow(): ActionRowBuilder<ButtonBuilder> {

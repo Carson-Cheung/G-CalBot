@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
 import { COMMAND_CONTEXTS, COMMAND_NAMES, EMBED_COLORS, INTEGRATION_TYPES } from '../const';
-import { EPHEMERAL } from '../helpers';
+import { EPHEMERAL, legalButtons } from '../helpers';
 import { PagerPayload, PagerState, buildPager, clampPage } from '../pager';
 
 export const COMMANDS_PAGER_KIND = 'c';
@@ -72,11 +72,16 @@ const CATEGORIES: CommandCategory[] = [
     ],
   },
   {
-    title: 'Dashboard & help',
+    title: 'Dashboard, privacy & help',
     emoji: '🧭',
-    summary: 'The Activity dashboard and this list',
+    summary: 'The dashboard, your data and this list',
     commands: [
       { usage: '/dashboard', alias: '/dash, /act', description: 'Open the dashboard Activity inside Discord' },
+      {
+        usage: '/calendar deletedata',
+        alias: '/cal deletedata',
+        description: 'Permanently delete everything the bot stores about you',
+      },
       { usage: '/commands', alias: '/comms', description: 'Show this list' },
     ],
   },
@@ -104,6 +109,7 @@ export function renderCommandsPage(state: PagerState): PagerPayload {
       placeholder: 'Jump to a category',
       options: CATEGORIES.map((c, i) => ({ value: String(i), label: c.title, description: c.summary, emoji: c.emoji })),
     },
+    extraButtons: legalButtons(),
   });
 }
 

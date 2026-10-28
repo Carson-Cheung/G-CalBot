@@ -229,13 +229,25 @@ export async function upsertUserToPostgres(
 }
 
 /**
- * Deletes a user from PostgreSQL (cascades to linked_calendars).
+ * Deletes a user from PostgreSQL (cascades to linked_calendars), along with their
+ * sent-reminder records, whose keys start with the user ID.
  */
 export async function deleteUserFromPostgres(
   pool: Pool,
   userId: string
 ): Promise<void> {
-  await pool.query('DELETE FROM users WHERE user_id = $1;', [userId]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN;');
+    await client.query('DELETE FROM users WHERE user_id = $1;', [userId]);
+    await client.query('DELETE FROM sent_reminders WHERE reminder_key LIKE $1;', [`${userId}:%`]);
+    await client.query('COMMIT;');
+  } catch (err) {
+    await client.query('ROLLBACK;').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**

@@ -122,5 +122,10 @@ export function buildCalendarCommand(name: string) {
             )
             .setRequired(false),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('deletedata')
+        .setDescription('Permanently delete everything this bot stores about you'),
     );
 }

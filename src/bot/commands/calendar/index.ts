@@ -12,6 +12,7 @@ import { handleView } from './handlers/view';
 import { handleTest } from './handlers/test';
 import { handleShare } from './handlers/share';
 import { handleDaily } from './handlers/daily';
+import { handleDeleteData } from './handlers/deleteData';
 
 async function executeCalendar(
   interaction: ChatInputCommandInteraction,
@@ -38,6 +39,8 @@ async function executeCalendar(
       return handleShare(interaction, reminderEngine);
     case 'daily':
       return handleDaily(interaction, reminderEngine);
+    case 'deletedata':
+      return handleDeleteData(interaction);
     default:
       return interaction.reply({
         content: `Unknown subcommand: ${subcommand}`,

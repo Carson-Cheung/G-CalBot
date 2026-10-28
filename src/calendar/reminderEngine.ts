@@ -270,7 +270,7 @@ export class ReminderEngine {
       embed.setTimestamp();
 
       await user.send({ embeds: [embed] });
-      console.log(`Sent reminder to user ${userId} for event "${event.title}"`);
+      console.log(`Sent reminder to user ${userId}`);
       activityLogger.log(
         'reminder',
         '🔔',

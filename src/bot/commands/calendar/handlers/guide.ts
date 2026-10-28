@@ -1,7 +1,7 @@
 import { ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { config } from '../../../../config';
 import { EMBED_COLORS, GOOGLE_CALENDAR_URL } from '../../../const';
-import { EPHEMERAL } from '../../../helpers';
+import { EPHEMERAL, legalButtons } from '../../../helpers';
 import { PagerPayload, PagerState, buildPager, clampPage } from '../../../pager';
 
 export const GUIDE_PAGER_KIND = 'g';
@@ -98,15 +98,17 @@ export function renderGuidePage(state: PagerState): PagerPayload {
   if (step.image) embed.setImage(imageUrl(step.image));
 
   const extraButtons =
-    index === 1
-      ? [
-          new ButtonBuilder()
-            .setLabel('Open Google Calendar')
-            .setEmoji('📅')
-            .setStyle(ButtonStyle.Link)
-            .setURL(GOOGLE_CALENDAR_URL),
-        ]
-      : [];
+    index === 0
+      ? legalButtons()
+      : index === 1
+        ? [
+            new ButtonBuilder()
+              .setLabel('Open Google Calendar')
+              .setEmoji('📅')
+              .setStyle(ButtonStyle.Link)
+              .setURL(GOOGLE_CALENDAR_URL),
+          ]
+        : [];
 
   return buildPager(embed, { ...state, page: index, filter: String(index) }, STEPS.length, {
     select: {
