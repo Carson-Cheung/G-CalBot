@@ -37,7 +37,6 @@ function isAllowedOrigin(origin: string): boolean {
 
   if (isHttps && (DISCORD_ORIGINS.has(origin) || host.endsWith('.discordsays.com'))) return true;
   if (isHttps && (host === 'carsoncheung.work' || host.endsWith('.carsoncheung.work'))) return true;
-  if (isHttps && host.endsWith('.vercel.app')) return true;
   if (origin === publicOrigin()) return true;
   if (origin === `http://localhost:${config.port}` || origin === `http://127.0.0.1:${config.port}`) {
     return true;
