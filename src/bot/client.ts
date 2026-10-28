@@ -11,6 +11,10 @@ import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
 import { replyError } from './helpers';
+import {
+  GUIDE_BUTTON_PREFIX,
+  handleGuideButton,
+} from './commands/calendar/handlers/guide';
 
 function describeCommand(interaction: ChatInputCommandInteraction): string {
   const parts = [
@@ -43,6 +47,16 @@ export function createBot() {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.isButton()) {
+      if (!interaction.customId.startsWith(GUIDE_BUTTON_PREFIX)) return;
+      try {
+        await handleGuideButton(interaction);
+      } catch (err) {
+        console.error('Error handling guide button:', err);
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const description = describeCommand(interaction);

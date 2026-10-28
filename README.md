@@ -39,7 +39,7 @@ It has two parts:
 | `/calendar unlink [calendar]` | `/cal unlink` | Remove one calendar, or all of them | Private |
 | `/calendar settings <minutes>` | `/cal settings` | Set the reminder lead time | Private |
 | `/calendar test` | `/cal test` | Send a test reminder DM | Private |
-| `/calendar guide` | `/cal guide` | Show how to find your secret iCal address | Private |
+| `/calendar guide` | `/cal guide` | Step-by-step walkthrough for finding your secret iCal address | Private |
 | `/open` | `/o` | Get a button that opens Google Calendar | Private |
 | `/dashboard` | `/dash`, `/act` | Launch the Activity dashboard | Channel |
 
