@@ -12,21 +12,14 @@ export interface ActivityLogEntry {
 }
 
 /**
- * Censors a Discord username/mention for public telemetry feeds:
- * Preserves the leading '@', the first 2 characters, masks the middle with asterisks (minimum 7),
- * and preserves the final character (e.g. "@Crow!" -> "@Cr*******!").
+ * Masks a Discord username for the public activity feed: only the first character
+ * survives and the mask is a fixed length, so neither the length nor the ending leaks
+ * (e.g. "@Crow!" -> "@C*****").
  */
 export function censorUsername(name?: string | null): string {
-  if (!name || typeof name !== 'string') return '@an*******s';
-  const clean = name.trim().startsWith('@') ? name.trim().slice(1) : name.trim();
-  if (!clean) return '@an*******s';
-  if (clean.length <= 2) {
-    return `@${clean}*******`;
-  }
-  const first2 = clean.slice(0, 2);
-  const last1 = clean.slice(-1);
-  const asteriskCount = Math.max(7, clean.length - 3);
-  return `@${first2}${'*'.repeat(asteriskCount)}${last1}`;
+  const clean = typeof name === 'string' ? name.trim().replace(/^@/, '') : '';
+  const first = [...clean][0] ?? 'a';
+  return `@${first}*****`;
 }
 
 const MAX_LOGS = 15;

@@ -224,7 +224,7 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     activityLogger.log(
       'system',
       '📅',
-      `Connected calendar feed "${calendarName}" via Activity dashboard (${events.length} events)`
+      'Connected a calendar feed via Activity dashboard'
     );
 
     const updatedUser = storage.getUser(userId);
