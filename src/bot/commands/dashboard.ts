@@ -14,7 +14,7 @@ import {
   INTEGRATION_TYPES,
 } from '../const';
 import { EPHEMERAL } from '../helpers';
-import { createSessionToken } from '../../utils/session';
+import { createLoginCode, LOGIN_LINK_TTL_MS } from '../../utils/loginLinks';
 
 function buildDashboardCommand(name: string) {
   return new SlashCommandBuilder()
@@ -50,14 +50,17 @@ async function executeDashboard(interaction: ChatInputCommandInteraction) {
         value:
           'Your private Google link is securely managed and never visible to other members.',
       },
-    );
+    )
+    .setFooter({
+      text: `The web dashboard link signs you in once and expires in ${LOGIN_LINK_TTL_MS / 60_000} minutes. Never share it.`,
+    });
 
-  const sessionToken = createSessionToken({
+  const loginCode = createLoginCode({
     userId: interaction.user.id,
     username: interaction.user.displayName || interaction.user.username,
     avatarUrl: interaction.user.displayAvatarURL({ size: 128 }),
   });
-  const webDashboardUrl = `${config.publicUrl.replace(/\/$/, '')}/?session=${encodeURIComponent(sessionToken)}`;
+  const webDashboardUrl = `${config.publicUrl.replace(/\/$/, '')}/?login=${encodeURIComponent(loginCode)}`;
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()

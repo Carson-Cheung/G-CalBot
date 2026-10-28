@@ -87,22 +87,36 @@ export function useDiscordAuth(notify: Notify) {
       const params = new URLSearchParams(window.location.search);
       const frameId = params.get('frame_id');
 
-      const sessionParam = params.get('session');
-      if (sessionParam) {
-        safeStorage.setItem(SESSION_STORAGE_KEY, sessionParam);
-        if (!frameId) {
-          try {
-            const cleanSearch = window.location.search
-              .replace(/([?&])session=[^&]+(&|$)/, '$1')
-              .replace(/[?&]$/, '');
-            window.history.replaceState({}, '', window.location.pathname + cleanSearch);
-          } catch {
-            // history API can be blocked in restricted contexts
-          }
+      // /dash links carry a one-time `login` code. Old links carried a reusable
+      // `session` token, which is no longer accepted from the URL.
+      const loginCode = params.get('login');
+      if (loginCode || params.has('session')) {
+        try {
+          params.delete('login');
+          params.delete('session');
+          const query = params.toString();
+          window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
+        } catch {
+          // history API can be blocked in restricted contexts
         }
       }
 
       const insideDiscord = Boolean(frameId) || window.parent !== window;
+
+      let signedInFromLink = false;
+      if (loginCode && !insideDiscord) {
+        try {
+          const { sessionToken: linkToken } = await api.redeemLoginLink(loginCode);
+          safeStorage.setItem(SESSION_STORAGE_KEY, linkToken);
+          signedInFromLink = true;
+        } catch (err) {
+          notify(
+            err instanceof Error ? err.message : 'This sign-in link has expired. Run /dash in Discord again.',
+            'error'
+          );
+        }
+        if (cancelled) return;
+      }
 
       if (insideDiscord) {
         let clientId = await resolveClientId(params);
@@ -126,7 +140,7 @@ export function useDiscordAuth(notify: Notify) {
           }
         }
 
-        if (!sessionParam && !cancelled) {
+        if (!cancelled) {
           try {
             if (!clientId) clientId = await resolveClientId(params);
 
@@ -189,6 +203,11 @@ export function useDiscordAuth(notify: Notify) {
             if (cancelled) return;
             if (session.authenticated && session.user) {
               applySession(session.user, storedToken);
+              if (signedInFromLink) {
+                // Makes a link that signs into someone else's account obvious.
+                const name = session.user.global_name || session.user.username;
+                notify(`Signed in as ${name}. Not you? Sign out and run /dash yourself.`, 'success');
+              }
               setAuthLoading(false);
               return;
             }
@@ -214,7 +233,7 @@ export function useDiscordAuth(notify: Notify) {
     return () => {
       cancelled = true;
     };
-  }, [applySession]);
+  }, [applySession, notify]);
 
   const loginWithDiscord = useCallback(async () => {
     setAuthLoading(true);

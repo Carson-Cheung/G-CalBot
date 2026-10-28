@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { config } from '../../config';
 import { createSessionToken } from '../../utils/session';
+import { redeemLoginCode } from '../../utils/loginLinks';
 import { activityLogger, censorUsername } from '../../utils/activityLogger';
 import { DEMO_USER_ID, getRequestSession } from '../requestAuth';
 
@@ -105,6 +106,16 @@ authRouter.post('/token', async (req: Request, res: Response) => {
     console.error('OAuth token exchange error:', err);
     res.status(502).json({ error: 'Token exchange failed' });
   }
+});
+
+// Swaps the one-time code from a /dash link for a session token.
+authRouter.post(['/auth/link', '/link'], (req: Request, res: Response) => {
+  const user = redeemLoginCode(req.body?.code);
+  if (!user) {
+    return res.status(401).json({ error: 'This sign-in link has expired or was already used. Run /dash in Discord again.' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ sessionToken: createSessionToken(user) });
 });
 
 authRouter.get(['/auth/session', '/session'], (req: Request, res: Response) => {

@@ -61,6 +61,9 @@ export const api = {
 
   exchangeCode: (code: string) => request<AuthResponse>('/api/token', { method: 'POST', body: { code } }),
 
+  redeemLoginLink: (code: string) =>
+    request<{ sessionToken: string }>('/api/auth/link', { method: 'POST', body: { code } }),
+
   verifySession: (token: string) => request<SessionResponse>('/api/auth/session?initial=true', { token }),
 
   startDemoHandoff: () =>
