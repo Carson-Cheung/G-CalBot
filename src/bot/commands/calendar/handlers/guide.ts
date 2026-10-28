@@ -7,7 +7,7 @@ import { PagerPayload, PagerState, buildPager, clampPage } from '../../../pager'
 export const GUIDE_PAGER_KIND = 'g';
 
 // Bump after replacing a screenshot: Discord caches embed images by URL.
-const IMAGE_VERSION = 2;
+const IMAGE_VERSION = 3;
 
 interface GuideStep {
   title: string;
