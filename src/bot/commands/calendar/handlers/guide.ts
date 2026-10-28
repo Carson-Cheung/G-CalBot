@@ -7,7 +7,7 @@ import { PagerPayload, PagerState, buildPager, clampPage } from '../../../pager'
 export const GUIDE_PAGER_KIND = 'g';
 
 // Bump after replacing a screenshot: Discord caches embed images by URL.
-const IMAGE_VERSION = 1;
+const IMAGE_VERSION = 2;
 
 interface GuideStep {
   title: string;
@@ -49,17 +49,26 @@ const STEPS: GuideStep[] = [
   {
     title: 'Copy the secret address',
     body:
-      'Find **Secret address in iCal format** and click its copy button.\n\n' +
-      "Don't use the **Public address**; it only works for public calendars. " +
-      'Google may show a security warning first. That is normal.',
+      'Find **Secret address in iCal format** and click the copy button (📋) on the right.\n\n' +
+      "Don't use the **Public address** above it; that one only works for public calendars and contains your email.",
     image: 'step-5.png',
+  },
+  {
+    title: 'Click OK on the security warning',
+    body:
+      'Google shows a **Security warning** saying you should not give the secret address to other people. Click **OK**.\n\n' +
+      "**Why it's safe here:** anyone with this link can read your calendar, so Google warns you before copying it. " +
+      "You're only giving it to the bot, which uses it to read your events for reminders. " +
+      'It is never shown to other Discord members or server admins.\n\n' +
+      "Don't paste it anywhere else, like a public channel. If it ever leaks, click **Reset** in the same settings section to make the old link stop working.",
+    image: 'step-6.png',
   },
   {
     title: 'Link it to the bot',
     body:
-      'Back in Discord, run:\n`/cal link url:<paste your link> name:<optional name>`\n\n' +
-      'The bot checks the link and shows your next few events.',
-    image: 'step-6.png',
+      'Back in Discord, type `/cal link`, then paste your link into the **url** box. You can add a **name** too, like `Work`.\n\n' +
+      'The bot checks the link and shows your next few events. Only you can see its reply.',
+    image: 'step-7.png',
   },
   {
     title: "You're all set",
