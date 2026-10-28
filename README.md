@@ -21,7 +21,8 @@ It has two parts:
 - **Private by default.** Linking commands and the dashboard are visible only to you. Feed URLs and your email are never shared. Event details (titles, locations, descriptions) *are* shown when you use public commands like `/cal share`.
 - **Multiple calendars.** Link up to 10 feeds. Their events are merged and tagged by calendar.
 - **Schedule sharing.** `/cal share` posts your upcoming events in chat with Discord timestamps. Ranges: `tdy`, `tmr`, `3d`, `2w` and so on.
-- **DM reminders.** Choose when reminders arrive: at the start time, or 5, 10 (default), 15, 30 or 60 minutes before. Recurring events, exceptions and time zones are supported.
+- **Paged views.** Schedules show one day per page, with « ‹ › » buttons and a dropdown to filter by calendar.
+- **DM reminders.** Choose exactly how early reminders arrive, from the start time up to 7 days before (`45m`, `2h`, `1d`, ...). Recurring events, exceptions and time zones are supported.
 - **Daily digest.** An optional morning summary of your day, sent at a time you choose in your time zone.
 - **PostgreSQL or local JSON.** Data is stored in PostgreSQL when `DATABASE_URL` is set, or in a local JSON file when it isn't.
 - **User-installable.** Add it to your own account and use it in any server, DM or group chat.
@@ -34,14 +35,15 @@ It has two parts:
 | `/calendar link <url> [name]` | `/cal link` | Connect a Google Calendar or `.ics` feed | Private |
 | `/calendar share [until]` | `/cal share` | Post your upcoming schedule (`tdy`, `tmr`, `3d`, `1w`, ...) | **Public** |
 | `/calendar daily [time] [enabled] [timezone] [test]` | `/cal daily` | Configure the daily digest | Private |
-| `/calendar view` | `/cal view` | Show upcoming events from all calendars | Private |
+| `/calendar view` | `/cal view` | Browse the next 7 days, one day per page | Private |
 | `/calendar list` | `/cal list` | List connected calendars | Private |
 | `/calendar unlink [calendar]` | `/cal unlink` | Remove one calendar, or all of them | Private |
-| `/calendar settings <minutes>` | `/cal settings` | Set the reminder lead time | Private |
+| `/calendar settings [remind_before]` | `/cal settings` | Set the reminder lead time (`45m`, `2h`, `1d`, up to 7 days) | Private |
 | `/calendar test` | `/cal test` | Send a test reminder DM | Private |
 | `/calendar guide` | `/cal guide` | Step-by-step walkthrough for finding your secret iCal address | Private |
 | `/open` | `/o` | Get a button that opens Google Calendar | Private |
 | `/dashboard` | `/dash`, `/act` | Launch the Activity dashboard | Channel |
+| `/commands` | `/comms` | List every command | Private |
 
 ## Connecting a Google Calendar
 

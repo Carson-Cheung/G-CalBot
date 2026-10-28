@@ -4,7 +4,13 @@ import { storage } from '../db/storage';
 import { DEMO_USER_ID, resolveUserCalendars } from '../db/userDefaults';
 import { CalendarSyncService } from './syncService';
 import { CalendarEvent, UserCalendarConfig } from '../types';
-import { getTimezoneDayRange, isValidTimezone } from '../utils/time';
+import {
+  floatingDateKey,
+  getTimezoneDayRange,
+  isValidTimezone,
+  zonedDateKey,
+  formatDurationMinutes,
+} from '../utils/time';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
 
 const DEFAULT_TIMEZONE = 'America/Toronto';
@@ -47,18 +53,6 @@ function minutesSinceMidnightIn(date: Date, timeZone: string): number {
   }).formatToParts(date);
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
   return get('hour') * 60 + get('minute');
-}
-
-function zonedDateKey(date: Date, timeZone: string): string {
-  return date.toLocaleDateString('en-CA', { timeZone });
-}
-
-/** All-day dates from node-ical are server-local midnights, so read them back with local getters. */
-function floatingDateKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 function truncate(text: string, max: number): string {
@@ -252,7 +246,7 @@ export class ReminderEngine {
         .setDescription(
           leadMinutes === 0
             ? '**Starting right now!**'
-            : `Starting in **${leadMinutes} minute${leadMinutes === 1 ? '' : 's'}** (<t:${startUnix}:R>)`
+            : `Starting in **${formatDurationMinutes(leadMinutes)}** (<t:${startUnix}:R>)`
         )
         .addFields({
           name: '⏰ Time',
@@ -280,7 +274,7 @@ export class ReminderEngine {
       activityLogger.log(
         'reminder',
         '🔔',
-        `Dispatched event reminder to ${censorUsername(displayNameOf(user))} (${leadMinutes === 0 ? 'starting now' : `${leadMinutes}m before`})`
+        `Dispatched event reminder to ${censorUsername(displayNameOf(user))} (${leadMinutes === 0 ? 'starting now' : `${formatDurationMinutes(leadMinutes)} before`})`
       );
       return true;
     } catch (err: any) {

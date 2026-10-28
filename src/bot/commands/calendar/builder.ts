@@ -53,20 +53,13 @@ export function buildCalendarCommand(name: string) {
     .addSubcommand((sub) =>
       sub
         .setName('settings')
-        .setDescription('Customize reminder alert timing')
-        .addIntegerOption((opt) =>
+        .setDescription('Set how long before each event your reminder DM arrives')
+        .addStringOption((opt) =>
           opt
             .setName('remind_before')
-            .setDescription('Minutes before event to receive Discord DM alert')
-            .setRequired(true)
-            .addChoices(
-              { name: 'At event start (0 mins)', value: 0 },
-              { name: '5 minutes before', value: 5 },
-              { name: '10 minutes before (Default)', value: 10 },
-              { name: '15 minutes before', value: 15 },
-              { name: '30 minutes before', value: 30 },
-              { name: '1 hour before', value: 60 },
-            ),
+            .setDescription('e.g. 0, 10m, 45m, 2h, 1h30m, 1d (up to 7d). Leave empty to see your current setting')
+            .setMaxLength(20)
+            .setRequired(false),
         ),
     )
     .addSubcommand((sub) =>

@@ -1,16 +1,10 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonInteraction,
-  ButtonStyle,
-  ChatInputCommandInteraction,
-  EmbedBuilder,
-} from 'discord.js';
+import { ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { config } from '../../../../config';
 import { EMBED_COLORS, GOOGLE_CALENDAR_URL } from '../../../const';
 import { EPHEMERAL } from '../../../helpers';
+import { PagerPayload, PagerState, buildPager, clampPage } from '../../../pager';
 
-export const GUIDE_BUTTON_PREFIX = 'guide:';
+export const GUIDE_PAGER_KIND = 'g';
 
 // Bump after replacing a screenshot: Discord caches embed images by URL.
 const IMAGE_VERSION = 1;
@@ -82,59 +76,45 @@ function imageUrl(file: string): string {
   return `${config.publicUrl.replace(/\/$/, '')}/guide/${file}?v=${IMAGE_VERSION}`;
 }
 
-function renderStep(index: number) {
+export function renderGuidePage(state: PagerState): PagerPayload {
+  const index = clampPage(state.page, STEPS.length);
   const step = STEPS[index]!;
-  const isFirst = index === 0;
   const isLast = index === STEPS.length - 1;
 
   const embed = new EmbedBuilder()
     .setColor(isLast ? EMBED_COLORS.GOOGLE_GREEN : EMBED_COLORS.GOOGLE_BLUE)
     .setAuthor({ name: '📖 Calendar setup guide' })
     .setTitle(step.title)
-    .setDescription(step.body)
-    .setFooter({ text: `Step ${index + 1} of ${STEPS.length}` });
+    .setDescription(step.body);
   if (step.image) embed.setImage(imageUrl(step.image));
 
-  const row = new ActionRowBuilder<ButtonBuilder>();
-  if (!isFirst) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${GUIDE_BUTTON_PREFIX}${index - 1}`)
-        .setLabel('Back')
-        .setEmoji('◀️')
-        .setStyle(ButtonStyle.Secondary),
-    );
-  }
-  if (!isLast) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${GUIDE_BUTTON_PREFIX}${index + 1}`)
-        .setLabel(isFirst ? 'Start' : 'Next')
-        .setEmoji('▶️')
-        .setStyle(ButtonStyle.Primary),
-    );
-  }
-  if (index === 1) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setLabel('Open Google Calendar')
-        .setEmoji('📅')
-        .setStyle(ButtonStyle.Link)
-        .setURL(GOOGLE_CALENDAR_URL),
-    );
-  }
+  const extraButtons =
+    index === 1
+      ? [
+          new ButtonBuilder()
+            .setLabel('Open Google Calendar')
+            .setEmoji('📅')
+            .setStyle(ButtonStyle.Link)
+            .setURL(GOOGLE_CALENDAR_URL),
+        ]
+      : [];
 
-  return { embeds: [embed], components: [row] };
+  return buildPager(embed, { ...state, page: index, filter: String(index) }, STEPS.length, {
+    select: {
+      placeholder: 'Jump to a step',
+      options: STEPS.map((s, i) => ({ value: String(i), label: `${i + 1}. ${s.title}` })),
+    },
+    extraButtons,
+  });
 }
 
 export async function handleGuide(interaction: ChatInputCommandInteraction) {
-  return interaction.reply({ ...renderStep(0), flags: EPHEMERAL });
-}
-
-export async function handleGuideButton(interaction: ButtonInteraction) {
-  const requested = Number(interaction.customId.slice(GUIDE_BUTTON_PREFIX.length));
-  const index = Number.isInteger(requested)
-    ? Math.min(Math.max(requested, 0), STEPS.length - 1)
-    : 0;
-  return interaction.update(renderStep(index));
+  const page = renderGuidePage({
+    kind: GUIDE_PAGER_KIND,
+    ownerId: interaction.user.id,
+    page: 0,
+    filter: '0',
+    extra: '',
+  });
+  return interaction.reply({ ...page, flags: EPHEMERAL });
 }

@@ -6,6 +6,8 @@ export const COMMAND_NAMES = {
   ACT: 'act',
   OPEN: 'open',
   O: 'o',
+  COMMANDS: 'commands',
+  COMMS: 'comms',
 } as const;
 
 export const EMBED_COLORS = {
@@ -20,8 +22,6 @@ export const DEFAULT_DIGEST_TIME = '08:00';
 export const GOOGLE_CALENDAR_URL = 'https://calendar.google.com';
 
 export const VIEW_WINDOW_DAYS = 7;
-export const VIEW_MAX_EVENTS = 10;
-export const SHARE_MAX_EVENTS = 15;
 export const LINK_PREVIEW_EVENTS = 3;
 
 // Discord embed field names are capped at 256 characters.

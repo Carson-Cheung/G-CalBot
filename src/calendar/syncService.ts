@@ -451,7 +451,9 @@ export class CalendarSyncService {
   ): Promise<CalendarEvent[]> {
     const results = await Promise.allSettled(
       calendars.map((cal) =>
-        CalendarSyncService.fetchUpcomingEvents(cal.url, windowDays, cal.name)
+        CalendarSyncService.fetchUpcomingEvents(cal.url, windowDays, cal.name).then((events) =>
+          events.map((ev) => ({ ...ev, calendarId: cal.id }))
+        )
       )
     );
 

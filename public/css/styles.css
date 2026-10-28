@@ -1577,6 +1577,32 @@ body {
   color: var(--indigo-200);
 }
 
+.custom-lead-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  background: rgba(18, 18, 22, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+
+.custom-lead-row.selected {
+  background: rgba(var(--blurple-rgb), 0.15);
+  border-color: var(--primary-blurple);
+}
+
+.custom-lead-input {
+  flex: 1 1 140px;
+  max-width: 200px;
+}
+
+.custom-lead-error {
+  color: #f87171;
+}
+
 /* Timezone Row & Live Clock */
 .timezone-selector-row {
   display: grid;

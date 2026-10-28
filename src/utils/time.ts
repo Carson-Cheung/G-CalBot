@@ -255,3 +255,53 @@ export function parseShareWindow(
 
   return { windowEnd, rangeDescription, windowDays };
 }
+
+const DURATION_UNITS: Record<string, number> = { d: 1440, h: 60, m: 1 };
+
+/**
+ * Parses a lead time like "45m", "2h", "1d", "1h30m" or "90" (minutes) into minutes.
+ * "0", "now" and "start" mean at the event's start. Returns null when unparseable.
+ */
+export function parseDurationMinutes(input: string): number | null {
+  const text = input.trim().toLowerCase().replace(/\s+/g, '');
+  if (!text) return null;
+  if (text === 'now' || text === 'start') return 0;
+  if (/^\d+$/.test(text)) return Number(text);
+
+  const normalized = text
+    .replace(/days?/g, 'd')
+    .replace(/(hours?|hrs?)/g, 'h')
+    .replace(/(minutes?|mins?)/g, 'm');
+  if (!/^(\d+[dhm])+$/.test(normalized)) return null;
+
+  let total = 0;
+  for (const [, amount, unit] of normalized.matchAll(/(\d+)([dhm])/g)) {
+    total += Number(amount) * DURATION_UNITS[unit!]!;
+  }
+  return total;
+}
+
+/** Formats minutes as "1 day 2 hours", "45 minutes" or "at start". */
+export function formatDurationMinutes(minutes: number): string {
+  if (minutes <= 0) return 'at start';
+  const parts: string[] = [];
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days) parts.push(`${days} day${days === 1 ? '' : 's'}`);
+  if (hours) parts.push(`${hours} hour${hours === 1 ? '' : 's'}`);
+  if (mins) parts.push(`${mins} minute${mins === 1 ? '' : 's'}`);
+  return parts.join(' ');
+}
+
+export function zonedDateKey(date: Date, timeZone: string): string {
+  return date.toLocaleDateString('en-CA', { timeZone });
+}
+
+/** All-day dates from node-ical are server-local midnights, so read them back with local getters. */
+export function floatingDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}

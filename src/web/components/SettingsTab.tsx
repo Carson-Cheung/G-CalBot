@@ -1,7 +1,11 @@
 import { Bell, CheckCircle2, Clock, Globe, Save, Sliders, Zap } from 'lucide-react';
 import { LEAD_TIME_OPTIONS, TIMEZONE_OPTIONS } from '../constants';
+import { useState } from 'react';
 import { useLiveClock } from '../hooks/useLiveClock';
+import { formatDurationShort, parseDurationMinutes } from '../utils/dates';
 import type { useSettingsForm } from '../hooks/useSettingsForm';
+
+const MAX_LEAD_MINUTES = 7 * 24 * 60;
 
 interface SettingsTabProps {
   form: ReturnType<typeof useSettingsForm>;
@@ -22,6 +26,23 @@ export function SettingsTab({ form }: SettingsTabProps) {
   } = form;
   const liveTime = useLiveClock(timezone);
   const isPreset = TIMEZONE_OPTIONS.some(option => option.value === timezone);
+  const isCustomLead = !LEAD_TIME_OPTIONS.some(option => option.value === leadTimeMinutes);
+  const [customLead, setCustomLead] = useState(isCustomLead ? formatDurationShort(leadTimeMinutes) : '');
+  const customMinutes = parseDurationMinutes(customLead);
+  const customError =
+    customLead.trim() === ''
+      ? null
+      : customMinutes === null
+        ? 'Use a time like 45m, 2h, 1h30m or 1d'
+        : customMinutes > MAX_LEAD_MINUTES
+          ? 'Up to 7 days before an event'
+          : null;
+
+  const applyCustomLead = (value: string) => {
+    setCustomLead(value);
+    const minutes = parseDurationMinutes(value);
+    if (minutes !== null && minutes <= MAX_LEAD_MINUTES) setLeadTimeMinutes(minutes);
+  };
 
   return (
     <main className="tab-content settings-view">
@@ -53,7 +74,10 @@ export function SettingsTab({ form }: SettingsTabProps) {
                     role="radio"
                     aria-checked={isSelected}
                     className={`lead-option-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setLeadTimeMinutes(option.value)}
+                    onClick={() => {
+                      setLeadTimeMinutes(option.value);
+                      setCustomLead('');
+                    }}
                   >
                     <span className="option-top-row">
                       <span className="option-title">{option.label}</span>
@@ -63,6 +87,25 @@ export function SettingsTab({ form }: SettingsTabProps) {
                   </button>
                 );
               })}
+            </div>
+
+            <div className={`custom-lead-row ${isCustomLead ? 'selected' : ''}`}>
+              <label htmlFor="customLeadInput" className="option-title">
+                Custom
+              </label>
+              <input
+                id="customLeadInput"
+                type="text"
+                className="form-input custom-lead-input"
+                placeholder="e.g. 2h, 1h30m, 1d"
+                value={customLead}
+                aria-invalid={customError ? true : undefined}
+                aria-describedby="customLeadHint"
+                onChange={e => applyCustomLead(e.target.value)}
+              />
+              <span id="customLeadHint" className={`option-sub ${customError ? 'custom-lead-error' : ''}`}>
+                {customError ?? (isCustomLead ? `${formatDurationShort(leadTimeMinutes)} before each event` : 'Any time up to 7 days')}
+              </span>
             </div>
           </div>
 

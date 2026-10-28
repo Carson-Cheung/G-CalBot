@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { CalendarSyncService } from '../../../../calendar/syncService';
 import { ReminderEngine } from '../../../../calendar/reminderEngine';
 import { MAX_CALENDARS_PER_USER } from '../../../../config';
+import { formatDurationMinutes } from '../../../../utils/time';
 import { storage } from '../../../../db/storage';
 import {
   DEFAULT_REMINDER_MINUTES,
@@ -67,7 +68,9 @@ export async function handleLink(
         `Connected **${linked.name}**!\n` +
           `Found **${events.length} event(s)** in this calendar for the next ${VIEW_WINDOW_DAYS} days.\n` +
           `You now have **${user.calendars.length} connected calendar(s)**.\n` +
-          `Reminders will be sent **${user.reminderMinutes} minutes** before each event.\n\n` +
+          (user.reminderMinutes === 0
+            ? 'Reminders will be sent when each event **starts**.\n\n'
+            : `Reminders will be sent **${formatDurationMinutes(user.reminderMinutes)}** before each event.\n\n`) +
           '⚠️ *Disclaimer: Data in calendar entries (event titles, descriptions, and locations) can be visible in Discord—please keep this in mind when using public commands like `/cal share`.*',
       );
 

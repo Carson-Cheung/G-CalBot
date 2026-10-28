@@ -28,6 +28,7 @@ export interface CalendarEvent {
   end: Date;
   isAllDay: boolean;
   calendarName?: string;
+  calendarId?: string;
   htmlLink?: string;
 }
 

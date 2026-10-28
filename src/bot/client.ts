@@ -11,10 +11,8 @@ import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
 import { replyError } from './helpers';
-import {
-  GUIDE_BUTTON_PREFIX,
-  handleGuideButton,
-} from './commands/calendar/handlers/guide';
+import { isPagerId } from './pager';
+import { handlePagerInteraction } from './pagerRoutes';
 
 function describeCommand(interaction: ChatInputCommandInteraction): string {
   const parts = [
@@ -47,12 +45,12 @@ export function createBot() {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (interaction.isButton()) {
-      if (!interaction.customId.startsWith(GUIDE_BUTTON_PREFIX)) return;
+    if (interaction.isButton() || interaction.isStringSelectMenu()) {
+      if (!isPagerId(interaction.customId)) return;
       try {
-        await handleGuideButton(interaction);
+        await handlePagerInteraction(interaction, reminderEngine);
       } catch (err) {
-        console.error('Error handling guide button:', err);
+        console.error('Error handling page navigation:', err);
       }
       return;
     }

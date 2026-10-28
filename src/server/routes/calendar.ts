@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { config, MAX_CALENDARS_PER_USER } from '../../config';
+import { config, MAX_CALENDARS_PER_USER, MAX_REMINDER_MINUTES } from '../../config';
 import { storage } from '../../db/storage';
 import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
@@ -14,7 +14,6 @@ export { resolveAuthorizedUserId } from '../requestAuth';
 const DEFAULT_TIMEZONE = 'America/New_York';
 const DEFAULT_DIGEST_TIME = '08:00';
 const DEFAULT_REMINDER_MINUTES = 10;
-const MAX_REMINDER_MINUTES = 24 * 60;
 const MAX_CALENDAR_NAME_LENGTH = 50;
 const MAX_ICAL_URL_LENGTH = 2048;
 

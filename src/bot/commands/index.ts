@@ -6,6 +6,7 @@ import { ReminderEngine } from '../../calendar/reminderEngine';
 import { calendarCommand, calCommand } from './calendar';
 import { dashboardCommand, dashCommand, actCommand } from './dashboard';
 import { openCommand, oCommand } from './open';
+import { commandsCommand, commsCommand } from './commandsList';
 import { COMMAND_CONTEXTS, INTEGRATION_TYPES } from '../const';
 
 export interface BotCommand {
@@ -43,6 +44,8 @@ export const allCommands: BotCommand[] = [
   actCommand,
   openCommand,
   oCommand,
+  commandsCommand,
+  commsCommand,
   entryPointCommand,
 ];
 

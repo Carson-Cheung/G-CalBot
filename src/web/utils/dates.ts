@@ -157,3 +157,31 @@ export function getNextEventCountdown(events: CalendarEvent[], nowMs: number): {
   const days = Math.floor(diffMs / DAY_MS);
   return { countdown: `In ${days} day${days === 1 ? '' : 's'}`, title: next.event.title };
 }
+
+const DURATION_UNITS: Record<string, number> = { d: 1440, h: 60, m: 1 };
+
+/** Parses "45m", "2h", "1h30m", "1d" or "90" (minutes); mirrors the bot's /cal settings parser. */
+export function parseDurationMinutes(input: string): number | null {
+  const text = input.trim().toLowerCase().replace(/\s+/g, '');
+  if (!text) return null;
+  if (text === 'now' || text === 'start') return 0;
+  if (/^\d+$/.test(text)) return Number(text);
+  const normalized = text
+    .replace(/days?/g, 'd')
+    .replace(/(hours?|hrs?)/g, 'h')
+    .replace(/(minutes?|mins?)/g, 'm');
+  if (!/^(\d+[dhm])+$/.test(normalized)) return null;
+  let total = 0;
+  for (const [, amount, unit] of normalized.matchAll(/(\d+)([dhm])/g)) {
+    total += Number(amount) * DURATION_UNITS[unit!]!;
+  }
+  return total;
+}
+
+export function formatDurationShort(minutes: number): string {
+  if (minutes <= 0) return '0m';
+  const d = Math.floor(minutes / 1440);
+  const h = Math.floor((minutes % 1440) / 60);
+  const m = minutes % 60;
+  return [d && `${d}d`, h && `${h}h`, m && `${m}m`].filter(Boolean).join(' ');
+}
