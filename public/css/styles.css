@@ -1906,3 +1906,28 @@ body {
 .mt-6 { margin-top: 24px; }
 .mb-2 { margin-bottom: 8px; }
 .text-danger { color: var(--danger-rose); }
+
+
+/* Settings legal links footer */
+.settings-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.settings-footer-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.settings-footer-links a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}

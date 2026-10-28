@@ -193,6 +193,20 @@ export function SettingsTab({ form }: SettingsTabProps) {
               <span>{saving ? 'Saving Preferences...' : 'Save Preferences'}</span>
             </button>
           </div>
+
+          <footer className="settings-footer-links">
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </a>
+            <span aria-hidden="true">•</span>
+            <a href="/terms" target="_blank" rel="noopener noreferrer">
+              Terms of Service
+            </a>
+            <span aria-hidden="true">•</span>
+            <a href="https://github.com/Carson-Cheung/G-CalBot" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+          </footer>
         </div>
       </div>
     </main>
