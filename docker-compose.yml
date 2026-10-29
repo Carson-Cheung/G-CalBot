@@ -1,0 +1,32 @@
+services:
+  bot:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # The local container has no TLS, so SSL is turned off for this connection only.
+      DATABASE_URL: postgres://calbot:calbot@db:5432/calbot?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: calbot
+      POSTGRES_PASSWORD: calbot
+      POSTGRES_DB: calbot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calbot -d calbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

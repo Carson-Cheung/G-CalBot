@@ -1,0 +1,7 @@
+# Allowlist: only what the build needs is sent to Docker, so .env and local data can't leak into an image.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!src
+!public
