@@ -74,9 +74,25 @@ npm run dev         # development, restarts on change
 npm run build       # bundle the dashboard and type-check
 npm start           # production
 npm run db:migrate  # check the database and copy local JSON data into PostgreSQL
+npm test            # run the unit tests
 ```
 
 When `DATABASE_URL` is set, the schema is created on startup and any data in `data/database.json` is copied over automatically.
+
+### Docker
+
+With Docker installed, this starts the bot and a local PostgreSQL database:
+
+```bash
+cp .env.example .env   # then fill in your values
+docker compose up --build
+```
+
+The dashboard is served at http://localhost:3000. Database data is kept in the `pgdata` volume between runs.
+
+### Continuous integration
+
+Every push to `main` and every pull request runs [GitHub Actions](.github/workflows/ci.yml). It type-checks the code, builds the dashboard and runs the tests on Node 20 and 24, then checks that the Docker image builds.
 
 ## Project structure
 
