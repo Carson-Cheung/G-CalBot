@@ -2,6 +2,7 @@
 
 A Discord bot and embedded Activity that sends calendar reminders, merges multiple calendars, and lets you share your schedule in chat.
 
+[![CI](https://github.com/Carson-Cheung/G-CalBot/actions/workflows/ci.yml/badge.svg)](https://github.com/Carson-Cheung/G-CalBot/actions/workflows/ci.yml)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript&logoColor=white)
 ![discord.js](https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-00E599?logo=postgresql&logoColor=white)
