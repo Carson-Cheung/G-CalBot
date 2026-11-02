@@ -36,6 +36,20 @@ export function createBot() {
 
   const reminderEngine = new ReminderEngine(client);
 
+  client.on(Events.Error, (err) => console.error('Discord client error:', err));
+  client.on(Events.ShardError, (err) => console.error('Discord shard error:', err));
+  client.on(Events.ShardDisconnect, (event, id) =>
+    console.warn(`Discord shard ${id} disconnected (code ${event.code})`),
+  );
+  client.rest.on('rateLimited', (info) =>
+    console.warn(`Discord REST rate limited: ${info.method} ${info.route}, retry in ${info.timeToReset}ms`),
+  );
+  client.on(Events.Debug, (msg) => {
+    if (/gateway|shard|identify|session|heartbeat/i.test(msg) && !/Heartbeat acknowledged/i.test(msg)) {
+      console.log(`[discord] ${msg.replace(/Token: \S+/g, 'Token: [redacted]')}`);
+    }
+  });
+
   client.once(Events.ClientReady, async () => {
     const botTag = client.user?.tag || 'G-CalBot#2765';
     console.log(`🤖 Discord bot logged in as ${botTag}!`);

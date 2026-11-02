@@ -77,11 +77,16 @@ async function bootstrap() {
   });
 
   if (config.discordToken) {
+    const loginWatchdog = setTimeout(() => {
+      console.warn('⚠️ Discord login still pending after 30s; the gateway may be unreachable from this host.');
+    }, 30_000);
     try {
       await client.login(config.discordToken);
     } catch (err) {
       console.error('❌ Failed to log into Discord with provided token:', err);
       activityLogger.log('warn', '⚠️', 'Failed to log into Discord with provided token');
+    } finally {
+      clearTimeout(loginWatchdog);
     }
   } else {
     console.warn('⚠️ No DISCORD_TOKEN found in .env. Bot gateway is offline, but Web UI is running.');
