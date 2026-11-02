@@ -1,3 +1,4 @@
+import { hexToNumber, resolveCalendarColor } from '../calendarColors';
 import { Client, EmbedBuilder, User } from 'discord.js';
 import { config } from '../config';
 import { storage } from '../db/storage';
@@ -240,8 +241,9 @@ export class ReminderEngine {
       const endUnix = Math.floor(event.end.getTime() / 1000);
       const titleTag = event.calendarName ? `[${event.calendarName}] ` : '';
 
+      const calendar = storage.getUser(userId)?.calendars.find((c) => c.id === event.calendarId);
       const embed = new EmbedBuilder()
-        .setColor(0x4285f4) // Google Calendar Blue
+        .setColor(hexToNumber(resolveCalendarColor(calendar?.color).hex))
         .setTitle(truncate(`📅 Reminder: ${titleTag}${event.title}`, 256))
         .setDescription(
           leadMinutes === 0

@@ -9,8 +9,8 @@ import {
   applyCalendarFilter,
   calendarFilterOptions,
   resolveCalendarFilter,
+  buildDayEmbeds,
   dayTitle,
-  formatDayEvents,
   groupEventsByDay,
 } from '../../../eventPages';
 import { parseShareWindow, zonedDateKey } from '../../../../utils/time';
@@ -52,32 +52,33 @@ export async function renderSharePage(
 
   const page = clampPage(state.page, days.length);
   const day = days[page];
-  const embed = new EmbedBuilder()
-    .setColor(EMBED_COLORS.DISCORD_BLURPLE)
-    .setAuthor({
-      name: truncate(`${author.displayName}'s schedule • ${timeLabel}`),
-      iconURL: author.displayAvatarURL(),
-    });
+  const authorInfo = {
+    name: truncate(`${author.displayName}'s schedule • ${timeLabel}`),
+    iconURL: author.displayAvatarURL(),
+  };
 
-  if (day) {
-    embed
-      .setTitle(dayTitle(day.key, tz, now))
-      .setDescription(formatDayEvents(day.events, user.calendars.length > 1 && !calendar));
-  } else {
-    embed
-      .setTitle('Completely free')
-      .setDescription(`No events scheduled for **${timeLabel}**.`);
-  }
+  const embeds = day
+    ? buildDayEmbeds(day.events, user, { author: authorInfo, title: dayTitle(day.key, tz, now) })
+    : [
+        new EmbedBuilder()
+          .setColor(EMBED_COLORS.DISCORD_BLURPLE)
+          .setAuthor(authorInfo)
+          .setTitle('Completely free')
+          .setDescription(`No events scheduled for **${timeLabel}**.`),
+      ];
+  const embed = embeds[embeds.length - 1]!;
 
   embed.addFields({
     name: '​',
     value: '✨ *Want this for your own calendar? Run `/cal guide` to get started.*',
   });
 
-  return buildPager(embed, { ...state, page, filter }, days.length, {
+  const payload = buildPager(embed, { ...state, page, filter }, days.length, {
     select: { placeholder: 'Filter by calendar', options: calendarFilterOptions(user) },
     footerNote: '🔒 Feed links and emails are never shared',
   });
+  // buildPager stamped the footer on the last embed; send the whole stack.
+  return { ...payload, embeds };
 }
 
 export async function handleShare(

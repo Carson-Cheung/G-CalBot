@@ -1,4 +1,5 @@
-import { escapeMarkdown } from 'discord.js';
+import { EmbedBuilder, escapeMarkdown } from 'discord.js';
+import { hexToNumber, resolveCalendarColor } from '../calendarColors';
 import { CalendarEvent, UserCalendarConfig } from '../types';
 import { floatingDateKey, zonedDateKey } from '../utils/time';
 import { PagerOption } from './pager';
@@ -71,7 +72,11 @@ export function dayTitle(key: string, timeZone: string, now = new Date()): strin
 }
 
 /** One block per event: bold title, then tree-style detail lines. */
-export function formatDayEvents(events: CalendarEvent[], showCalendar: boolean): string {
+export function formatDayEvents(
+  events: CalendarEvent[],
+  showCalendar: boolean,
+  maxLength = DESCRIPTION_MAX,
+): string {
   const blocks = events.map((event) => {
     const start = toUnix(event.start);
     const end = toUnix(event.end);
@@ -89,12 +94,61 @@ export function formatDayEvents(events: CalendarEvent[], showCalendar: boolean):
   let text = '';
   for (let i = 0; i < blocks.length; i++) {
     const next = text ? `${text}\n\n${blocks[i]}` : blocks[i]!;
-    if (next.length > DESCRIPTION_MAX) {
+    if (next.length > maxLength) {
       return `${text}\n\n*…and ${blocks.length - i} more*`;
     }
     text = next;
   }
   return text;
+}
+
+// Discord allows 10 embeds per message and 6000 characters across all of them.
+const MAX_EMBEDS_PER_MESSAGE = 10;
+const TOTAL_EMBED_BUDGET = 5000;
+
+/**
+ * One embed per calendar that has events on the day, each with that calendar's color as its side
+ * bar. Calendars appear in the user's order, so the one moved to the top comes first.
+ * The first embed carries `heading`; the last is the one the pager footer attaches to.
+ */
+export function buildDayEmbeds(
+  events: CalendarEvent[],
+  user: UserCalendarConfig,
+  heading: { author: { name: string; iconURL?: string }; title: string },
+): EmbedBuilder[] {
+  const groups = user.calendars
+    .map((calendar) => ({
+      name: calendar.name,
+      color: resolveCalendarColor(calendar.color),
+      events: events.filter((event) => event.calendarId === calendar.id),
+    }))
+    .filter((group) => group.events.length > 0);
+
+  const knownIds = new Set(user.calendars.map((calendar) => calendar.id));
+  const other = events.filter((event) => !event.calendarId || !knownIds.has(event.calendarId));
+  if (other.length > 0) groups.push({ name: 'Other', color: resolveCalendarColor(undefined), events: other });
+
+  // Past the embed cap the remaining calendars are folded into the last embed.
+  if (groups.length > MAX_EMBEDS_PER_MESSAGE) {
+    const rest = groups.splice(MAX_EMBEDS_PER_MESSAGE - 1);
+    groups.push({ name: 'More calendars', color: rest[0]!.color, events: rest.flatMap((g) => g.events) });
+  }
+
+  const perEmbed = Math.max(300, Math.floor(TOTAL_EMBED_BUDGET / Math.max(groups.length, 1)) - 100);
+  const embeds = groups.map((group) =>
+    new EmbedBuilder()
+      .setColor(hexToNumber(group.color.hex))
+      .setDescription(
+        `${group.color.emoji} **${escapeMarkdown(group.name.slice(0, 100))}**
+
+${formatDayEvents(group.events, false, perEmbed)}`,
+      ),
+  );
+
+  const first = embeds[0] ?? new EmbedBuilder().setColor(hexToNumber(resolveCalendarColor(undefined).hex));
+  if (embeds.length === 0) embeds.push(first);
+  first.setAuthor(heading.author).setTitle(heading.title);
+  return embeds;
 }
 
 export const ALL_CALENDARS = 'all';

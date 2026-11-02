@@ -3,6 +3,7 @@ export interface LinkedCalendar {
   name: string;
   url: string;
   addedAt: string;
+  color?: string; // key from calendarColors.ts
 }
 
 export interface UserCalendarConfig {

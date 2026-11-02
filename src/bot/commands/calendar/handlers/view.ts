@@ -9,8 +9,8 @@ import {
   applyCalendarFilter,
   calendarFilterOptions,
   resolveCalendarFilter,
+  buildDayEmbeds,
   dayTitle,
-  formatDayEvents,
   groupEventsByDay,
 } from '../../../eventPages';
 
@@ -31,23 +31,21 @@ export async function renderViewPage(
   const events = applyCalendarFilter(await reminderEngine.getUserEvents(user, refresh), calendar?.id);
   const days = groupEventsByDay(events, tz);
 
-  const embed = new EmbedBuilder().setColor(EMBED_COLORS.GOOGLE_BLUE);
   const page = clampPage(state.page, days.length);
   const day = days[page];
+  const author = { name: `📅 Your schedule • ${calendarLabel}` };
 
-  if (day) {
-    embed
-      .setAuthor({ name: `📅 Your schedule • ${calendarLabel}` })
-      .setTitle(dayTitle(day.key, tz))
-      .setDescription(formatDayEvents(day.events, user.calendars.length > 1 && !calendar));
-  } else {
-    embed
-      .setAuthor({ name: `📅 Your schedule • ${calendarLabel}` })
-      .setTitle('Nothing scheduled')
-      .setDescription(`No upcoming events in the next ${VIEW_WINDOW_DAYS} days.`);
-  }
+  const embeds = day
+    ? buildDayEmbeds(day.events, user, { author, title: dayTitle(day.key, tz) })
+    : [
+        new EmbedBuilder()
+          .setColor(EMBED_COLORS.GOOGLE_BLUE)
+          .setAuthor(author)
+          .setTitle('Nothing scheduled')
+          .setDescription(`No upcoming events in the next ${VIEW_WINDOW_DAYS} days.`),
+      ];
 
-  return buildPager(embed, { ...state, page, filter }, days.length, {
+  const payload = buildPager(embeds[embeds.length - 1]!, { ...state, page, filter }, days.length, {
     select: { placeholder: 'Filter by calendar', options: calendarFilterOptions(user) },
     footerNote: `Next ${VIEW_WINDOW_DAYS} days`,
     extraButtons: [
@@ -58,6 +56,8 @@ export async function renderViewPage(
         .setURL(GOOGLE_CALENDAR_URL),
     ],
   });
+  // buildPager stamped the footer on the last embed; send the whole stack.
+  return { ...payload, embeds };
 }
 
 export async function handleView(

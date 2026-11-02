@@ -55,6 +55,9 @@ export async function initPostgresSchema(pool: Pool): Promise<void> {
       PRIMARY KEY (user_id, id)
     );
 
+    ALTER TABLE linked_calendars ADD COLUMN IF NOT EXISTS color TEXT;
+    ALTER TABLE linked_calendars ADD COLUMN IF NOT EXISTS position INTEGER;
+
     CREATE TABLE IF NOT EXISTS sent_reminders (
       reminder_key TEXT PRIMARY KEY,
       sent_at BIGINT NOT NULL
@@ -87,6 +90,8 @@ interface CalendarRow {
   name: string;
   url: string;
   added_at: Date | string;
+  color: string | null;
+  position: number | null;
 }
 
 interface ReminderRow {
@@ -109,9 +114,9 @@ export async function loadAllFromPostgres(pool: Pool): Promise<{
       FROM users;
     `),
     pool.query<CalendarRow>(`
-      SELECT id, user_id, name, url, added_at
+      SELECT id, user_id, name, url, added_at, color, position
       FROM linked_calendars
-      ORDER BY added_at ASC;
+      ORDER BY position ASC NULLS LAST, added_at ASC;
     `),
     pool.query<ReminderRow>('SELECT reminder_key, sent_at FROM sent_reminders;'),
   ]);
@@ -140,6 +145,7 @@ export async function loadAllFromPostgres(pool: Pool): Promise<{
       name: calRow.name,
       url: calRow.url,
       addedAt: toIsoString(calRow.added_at),
+      ...(calRow.color ? { color: calRow.color } : {}),
     });
   }
 
@@ -200,20 +206,25 @@ export async function upsertUserToPostgres(
       user.userId,
     ]);
 
-    for (const cal of resolveUserCalendars(user)) {
+    const calendars = resolveUserCalendars(user);
+    for (const [index, cal] of calendars.entries()) {
       await client.query(
-        `INSERT INTO linked_calendars (id, user_id, name, url, added_at)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO linked_calendars (id, user_id, name, url, added_at, color, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_id, id) DO UPDATE SET
            name = EXCLUDED.name,
            url = EXCLUDED.url,
-           added_at = EXCLUDED.added_at;`,
+           added_at = EXCLUDED.added_at,
+           color = EXCLUDED.color,
+           position = EXCLUDED.position;`,
         [
           cal.id,
           user.userId,
           cal.name,
           cal.url,
           cal.addedAt ? new Date(cal.addedAt) : new Date(),
+          cal.color ?? null,
+          index,
         ]
       );
     }

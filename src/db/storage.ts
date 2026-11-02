@@ -314,6 +314,34 @@ class Storage {
     return true;
   }
 
+  /** Finds a linked calendar by ID or name (case-insensitive). */
+  public findCalendar(user: UserCalendarConfig, identifier: string): LinkedCalendar | undefined {
+    const target = identifier.trim().toLowerCase();
+    return user.calendars.find((c) => c.id.toLowerCase() === target || c.name.toLowerCase() === target);
+  }
+
+  public setCalendarColor(userId: string, identifier: string, color: string): LinkedCalendar | undefined {
+    const user = this.getUser(userId);
+    const calendar = user && this.findCalendar(user, identifier);
+    if (!user || !calendar) return undefined;
+    calendar.color = color;
+    user.updatedAt = new Date().toISOString();
+    this.saveUser(user);
+    return calendar;
+  }
+
+  /** Moves a calendar to the front of the user's list, which is the group shown first. */
+  public moveCalendarToTop(userId: string, identifier: string): LinkedCalendar | undefined {
+    const user = this.getUser(userId);
+    const calendar = user && this.findCalendar(user, identifier);
+    if (!user || !calendar) return undefined;
+    user.calendars = [calendar, ...user.calendars.filter((c) => c !== calendar)];
+    user.icalUrl = user.calendars[0]!.url;
+    user.updatedAt = new Date().toISOString();
+    this.saveUser(user);
+    return calendar;
+  }
+
   public hasReminderBeenSent(
     userId: string,
     eventId: string,

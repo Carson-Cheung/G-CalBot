@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { storage } from '../../../../db/storage';
+import { resolveCalendarColor } from '../../../../calendarColors';
 import { EMBED_COLORS } from '../../../const';
 import { EPHEMERAL, toUnix, truncate } from '../../../helpers';
 
@@ -22,12 +23,12 @@ export async function handleList(interaction: ChatInputCommandInteraction) {
       `You have **${user.calendars.length} calendar(s)** connected:`,
     )
     .setFooter({
-      text: 'Use `/cal unlink calendar:<name>` to remove an individual calendar.',
+      text: 'Colors: /cal color • Order: /cal top • Remove: /cal unlink calendar:<name>',
     });
 
   user.calendars.slice(0, MAX_EMBED_FIELDS).forEach((cal, i) => {
     embed.addFields({
-      name: truncate(`${i + 1}. ${cal.name}`),
+      name: truncate(`${resolveCalendarColor(cal.color).emoji} ${i + 1}. ${cal.name}${i === 0 ? ' ⬆️ top' : ''}`),
       value: `🔗 ID: \`${cal.id}\`\n🕒 Added <t:${toUnix(cal.addedAt)}:R>`,
     });
   });

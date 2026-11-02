@@ -8,6 +8,7 @@ import { handleLink } from './handlers/link';
 import { handleList } from './handlers/list';
 import { handleUnlink } from './handlers/unlink';
 import { handleSettings } from './handlers/settings';
+import { handleColor, handleTop } from './handlers/color';
 import { handleView } from './handlers/view';
 import { handleTest } from './handlers/test';
 import { handleShare } from './handlers/share';
@@ -31,6 +32,10 @@ async function executeCalendar(
       return handleUnlink(interaction, reminderEngine);
     case 'settings':
       return handleSettings(interaction);
+    case 'color':
+      return handleColor(interaction, reminderEngine);
+    case 'top':
+      return handleTop(interaction, reminderEngine);
     case 'view':
       return handleView(interaction, reminderEngine);
     case 'test':

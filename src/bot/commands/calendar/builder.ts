@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { CALENDAR_COLORS } from '../../../calendarColors';
 import { COMMAND_CONTEXTS, INTEGRATION_TYPES } from '../../const';
 
 export function buildCalendarCommand(name: string) {
@@ -45,6 +46,37 @@ export function buildCalendarCommand(name: string) {
             .setDescription(
               'Calendar name/ID to remove (leave blank to unlink all)',
             ),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('color')
+        .setDescription('Set the color a calendar shows in on your schedule and reminders')
+        .addStringOption((opt) =>
+          opt
+            .setName('calendar')
+            .setMaxLength(100)
+            .setDescription('Calendar name or ID (see /cal list)')
+            .setRequired(true),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('color')
+            .setDescription('A Google Calendar color')
+            .addChoices(...CALENDAR_COLORS.map((c) => ({ name: `${c.emoji} ${c.name}`, value: c.key })))
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('top')
+        .setDescription('Show a calendar first in your schedule and in /cal list')
+        .addStringOption((opt) =>
+          opt
+            .setName('calendar')
+            .setMaxLength(100)
+            .setDescription('Calendar name or ID (see /cal list)')
+            .setRequired(true),
         ),
     )
     .addSubcommand((sub) =>
