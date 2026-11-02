@@ -16,6 +16,18 @@ function checkConfigOrExit(): void {
   }
 }
 
+async function probeDiscordApi(): Promise<void> {
+  try {
+    const res = await fetch('https://discord.com/api/v10/gateway', {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = (await res.text()).replace(/\s+/g, ' ').slice(0, 300);
+    console.log(`[probe] discord.com/api/v10/gateway -> HTTP ${res.status} (cf-ray ${res.headers.get('cf-ray') ?? 'none'}): ${body}`);
+  } catch (err) {
+    console.error('[probe] discord.com/api/v10/gateway unreachable:', err);
+  }
+}
+
 function listen(app: ReturnType<typeof createServer>): Promise<Server> {
   return new Promise((resolve, reject) => {
     const httpServer = app.listen(config.port, () => resolve(httpServer));
@@ -77,6 +89,7 @@ async function bootstrap() {
   });
 
   if (config.discordToken) {
+    void probeDiscordApi();
     const loginWatchdog = setTimeout(() => {
       console.warn('⚠️ Discord login still pending after 30s; the gateway may be unreachable from this host.');
     }, 30_000);
