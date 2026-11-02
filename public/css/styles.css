@@ -1931,3 +1931,29 @@ body {
   color: var(--text-primary);
   text-decoration: underline;
 }
+
+
+.feed-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.feed-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: var(--transition);
+}
+
+.feed-color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.feed-color-swatch.selected {
+  border-color: #fff;
+}

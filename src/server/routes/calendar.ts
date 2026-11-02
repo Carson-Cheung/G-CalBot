@@ -4,6 +4,7 @@ import { storage } from '../../db/storage';
 import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { CalendarEvent, UserCalendarConfig } from '../../types';
+import { findCalendarColor } from '../../calendarColors';
 import { isValidTimezone, isValid24HourTime } from '../../utils/time';
 import { activityLogger, censorUsername } from '../../utils/activityLogger';
 import { FixedWindowLimiter, clientIp } from '../rateLimit';
@@ -262,6 +263,29 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
 
   router.delete('/user/:userId/calendar/:calId', requireRealUser, handleUnlink);
   router.delete('/user/:userId/calendar', requireRealUser, handleUnlink);
+
+  // Recolors a calendar and/or moves it to the top of the list (the group shown first).
+  router.patch('/user/:userId/calendar/:calId', requireRealUser, (req: Request, res: Response) => {
+    const { userId } = getAuthorized(res);
+    const rawCalId = req.params.calId;
+    const calendarId = Array.isArray(rawCalId) ? rawCalId[0] : rawCalId;
+    const { color, top } = (req.body ?? {}) as { color?: unknown; top?: unknown };
+
+    if (color !== undefined && (typeof color !== 'string' || !findCalendarColor(color))) {
+      return res.status(400).json({ error: 'Unknown calendar color.' });
+    }
+    if (color === undefined && top !== true) {
+      return res.status(400).json({ error: 'Nothing to update.' });
+    }
+
+    let calendar = calendarId ? storage.getUser(userId)?.calendars.find((c) => c.id === calendarId) : undefined;
+    if (!calendar) return res.status(404).json({ error: 'Calendar not found.' });
+
+    if (typeof color === 'string') calendar = storage.setCalendarColor(userId, calendar.id, color) ?? calendar;
+    if (top === true) calendar = storage.moveCalendarToTop(userId, calendar.id) ?? calendar;
+    reminderEngine?.invalidateUserCache(userId);
+    return res.json({ success: true, calendar });
+  });
 
   router.patch('/user/:userId/settings', requireRealUser, (req: Request, res: Response) => {
     const { userId } = getAuthorized(res);

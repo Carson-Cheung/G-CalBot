@@ -1,3 +1,4 @@
+import { findCalendarColor } from '../../calendarColors';
 import type { CalendarFeed, CalendarTheme } from '../types';
 
 const CALENDAR_THEMES: CalendarTheme[] = [
@@ -9,12 +10,27 @@ const CALENDAR_THEMES: CalendarTheme[] = [
   { border: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', text: '#ddd6fe', badgeBg: 'rgba(139, 92, 246, 0.2)', dot: '#8b5cf6' },
 ];
 
+function themeFromHex(hex: string): CalendarTheme {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const lighten = (channel: number) => Math.round(channel + (255 - channel) * 0.55);
+  return {
+    border: hex,
+    bg: `rgba(${r}, ${g}, ${b}, 0.12)`,
+    text: `rgb(${lighten(r)}, ${lighten(g)}, ${lighten(b)})`,
+    badgeBg: `rgba(${r}, ${g}, ${b}, 0.2)`,
+    dot: hex,
+  };
+}
+
 export function getCalendarTheme(name?: string, calendars?: CalendarFeed[]): CalendarTheme {
   if (!name) return CALENDAR_THEMES[0];
   if (calendars && calendars.length > 0) {
     const target = name.trim().toLowerCase();
     const idx = calendars.findIndex(c => c.name.trim().toLowerCase() === target);
-    if (idx !== -1) return CALENDAR_THEMES[idx % CALENDAR_THEMES.length];
+    if (idx !== -1) {
+      const chosen = findCalendarColor(calendars[idx].color);
+      return chosen ? themeFromHex(chosen.hex) : CALENDAR_THEMES[idx % CALENDAR_THEMES.length];
+    }
   }
   let hash = 0;
   for (let i = 0; i < name.length; i++) {

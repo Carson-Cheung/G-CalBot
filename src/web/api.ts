@@ -89,6 +89,18 @@ export const api = {
   saveSettings: (userId: string, token: string | null, payload: SettingsPayload) =>
     request<unknown>(`${userPath(userId)}/settings`, { method: 'PATCH', token, body: payload }),
 
+  updateCalendar: (
+    userId: string,
+    token: string | null,
+    calendarId: string,
+    payload: { color?: string; top?: boolean }
+  ) =>
+    request<{ success?: boolean }>(`${userPath(userId)}/calendar/${encodeURIComponent(calendarId)}`, {
+      method: 'PATCH',
+      token,
+      body: payload,
+    }),
+
   sendTestAlert: (userId: string, token: string | null) =>
     request<{ success?: boolean }>(`${userPath(userId)}/test`, { method: 'POST', token }),
 };

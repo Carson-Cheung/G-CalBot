@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Layers, Trash2 } from 'lucide-react';
+import { ArrowUpToLine, Layers, Trash2 } from 'lucide-react';
+import { CALENDAR_COLORS } from '../../calendarColors';
 import { api } from '../api';
 import type { Notify } from '../hooks/useToast';
 import type { CalendarEvent, CalendarFeed } from '../types';
@@ -37,6 +38,15 @@ export function FeedList({ calendars, events, userId, token, notify, onChanged }
       }
     } catch (err) {
       notify('Error removing feed: ' + (err instanceof Error ? err.message : 'unknown error'), 'error');
+    }
+  };
+
+  const handleUpdate = async (calendarId: string, payload: { color?: string; top?: boolean }) => {
+    try {
+      await api.updateCalendar(userId, token, calendarId, payload);
+      await onChanged();
+    } catch (err) {
+      notify('Could not update calendar: ' + (err instanceof Error ? err.message : 'unknown error'), 'error');
     }
   };
 
@@ -81,7 +91,7 @@ export function FeedList({ calendars, events, userId, token, notify, onChanged }
 
       {calendars.length > 0 ? (
         <div className="feed-cards-list">
-          {calendars.map(cal => {
+          {calendars.map((cal, index) => {
             const theme = getCalendarTheme(cal.name, calendars);
             return (
               <div key={cal.id} className="feed-item-card">
@@ -100,7 +110,32 @@ export function FeedList({ calendars, events, userId, token, notify, onChanged }
                   <span className="feed-connected-date">
                     Connected {cal.addedAt ? new Date(cal.addedAt).toLocaleDateString() : 'Active'}
                   </span>
+                  <div className="feed-color-row" role="group" aria-label={`Color for ${cal.name}`}>
+                    {CALENDAR_COLORS.map(color => (
+                      <button
+                        key={color.key}
+                        type="button"
+                        className={`feed-color-swatch ${theme.dot === color.hex ? 'selected' : ''}`}
+                        style={{ backgroundColor: color.hex }}
+                        title={color.name}
+                        aria-label={`${color.name} for ${cal.name}`}
+                        aria-pressed={theme.dot === color.hex}
+                        onClick={() => handleUpdate(cal.id, { color: color.key })}
+                      />
+                    ))}
+                  </div>
                 </div>
+                {index > 0 && (
+                  <button
+                    type="button"
+                    className="feed-remove-btn"
+                    title="Show this calendar first"
+                    aria-label={`Move ${cal.name} to the top`}
+                    onClick={() => handleUpdate(cal.id, { top: true })}
+                  >
+                    <ArrowUpToLine size={16} />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="feed-remove-btn"

@@ -13,6 +13,7 @@ export interface CalendarFeed {
   name: string;
   url: string;
   addedAt?: string;
+  color?: string;
 }
 
 export interface CalendarEvent {
