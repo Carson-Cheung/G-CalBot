@@ -23,7 +23,7 @@ export async function handleList(interaction: ChatInputCommandInteraction) {
       `You have **${user.calendars.length} calendar(s)** connected:`,
     )
     .setFooter({
-      text: 'Colors: /cal color • Order: /cal top • Remove: /cal unlink calendar:<name>',
+      text: 'Colours: /cal colour • Order: /cal top • Remove: /cal unlink calendar:<name>',
     });
 
   user.calendars.slice(0, MAX_EMBED_FIELDS).forEach((cal, i) => {

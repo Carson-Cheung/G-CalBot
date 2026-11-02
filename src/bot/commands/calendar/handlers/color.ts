@@ -12,9 +12,9 @@ export async function handleColor(
   reminderEngine: ReminderEngine,
 ) {
   const target = interaction.options.getString('calendar', true).trim();
-  const color = findCalendarColor(interaction.options.getString('color', true));
+  const color = findCalendarColor(interaction.options.getString('colour', true));
   if (!color) {
-    return interaction.reply({ content: '⚠️ That color is not available.', flags: EPHEMERAL });
+    return interaction.reply({ content: '⚠️ That colour is not available.', flags: EPHEMERAL });
   }
 
   const calendar = storage.setCalendarColor(interaction.user.id, target, color.key);

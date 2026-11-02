@@ -110,7 +110,7 @@ export function FeedList({ calendars, events, userId, token, notify, onChanged }
                   <span className="feed-connected-date">
                     Connected {cal.addedAt ? new Date(cal.addedAt).toLocaleDateString() : 'Active'}
                   </span>
-                  <div className="feed-color-row" role="group" aria-label={`Color for ${cal.name}`}>
+                  <div className="feed-color-row" role="group" aria-label={`Colour for ${cal.name}`}>
                     {CALENDAR_COLORS.map(color => (
                       <button
                         key={color.key}

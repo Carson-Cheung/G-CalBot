@@ -351,12 +351,13 @@ export class ReminderEngine {
           const startSec = Math.floor(ev.start.getTime() / 1000);
           const endSec = Math.floor(ev.end.getTime() / 1000);
           const calTag = ev.calendarName ? ` [${ev.calendarName}]` : '';
+          const square = resolveCalendarColor(user.calendars.find((c) => c.id === ev.calendarId)?.color).emoji;
           const locTag = ev.location ? `\n📍 *${truncate(ev.location, 120)}*` : '';
           const timeStr = ev.isAllDay
             ? '📅 *All Day*'
             : `⏰ <t:${startSec}:t> - <t:${endSec}:t> (<t:${startSec}:R>)`;
           embed.addFields({
-            name: truncate(`${ev.title}${calTag}`, 100),
+            name: truncate(`${square} ${ev.title}${calTag}`, 100),
             value: `${timeStr}${locTag}`,
           });
         }

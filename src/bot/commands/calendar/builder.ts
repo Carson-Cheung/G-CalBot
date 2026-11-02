@@ -50,8 +50,8 @@ export function buildCalendarCommand(name: string) {
     )
     .addSubcommand((sub) =>
       sub
-        .setName('color')
-        .setDescription('Set the color a calendar shows in on your schedule and reminders')
+        .setName('colour')
+        .setDescription('Set the colour a calendar shows in on your schedule and reminders')
         .addStringOption((opt) =>
           opt
             .setName('calendar')
@@ -61,8 +61,8 @@ export function buildCalendarCommand(name: string) {
         )
         .addStringOption((opt) =>
           opt
-            .setName('color')
-            .setDescription('A Google Calendar color')
+            .setName('colour')
+            .setDescription('A Google Calendar colour')
             .addChoices(...CALENDAR_COLORS.map((c) => ({ name: `${c.emoji} ${c.name}`, value: c.key })))
             .setRequired(true),
         ),

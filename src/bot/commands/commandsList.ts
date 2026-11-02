@@ -35,10 +35,10 @@ const CATEGORIES: CommandCategory[] = [
       { usage: '/calendar list', alias: '/cal list', description: 'See every calendar you have connected' },
       { usage: '/calendar unlink [calendar]', alias: '/cal unlink', description: 'Remove one calendar by name, or all of them' },
       {
-        usage: '/calendar color <calendar> <color>',
-        alias: '/cal color',
-        description: 'Pick a Google Calendar color for a calendar. It shows as that calendar\'s bar in your schedule, shares, reminders and the dashboard',
-        example: '/cal color calendar:Work color:Tomato',
+        usage: '/calendar colour <calendar> <colour>',
+        alias: '/cal colour',
+        description: 'Pick a Google Calendar colour for a calendar. It shows as that calendar\'s bar in your schedule, shares, reminders and the dashboard',
+        example: '/cal colour calendar:Work colour:Tomato',
       },
       {
         usage: '/calendar top <calendar>',
@@ -53,11 +53,11 @@ const CATEGORIES: CommandCategory[] = [
     emoji: '📅',
     summary: 'View and share upcoming events',
     commands: [
-      { usage: '/calendar view', alias: '/cal view', description: 'Browse your next 7 days, one day per page, with one colored card per calendar (only you can see it)' },
+      { usage: '/calendar view', alias: '/cal view', description: 'Browse your next 7 days, one day per page, with one coloured card per calendar (only you can see it)' },
       {
         usage: '/calendar share [until]',
         alias: '/cal share',
-        description: 'Post your schedule in the channel for everyone to see, with each calendar in its own color',
+        description: 'Post your schedule in the channel for everyone to see, with each calendar in its own colour',
         example: '/cal share until:tmr   (tdy, tmr, 3d, 2w)',
       },
       { usage: '/open', alias: '/o', description: 'Get a button that opens Google Calendar' },

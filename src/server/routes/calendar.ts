@@ -272,7 +272,7 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     const { color, top } = (req.body ?? {}) as { color?: unknown; top?: unknown };
 
     if (color !== undefined && (typeof color !== 'string' || !findCalendarColor(color))) {
-      return res.status(400).json({ error: 'Unknown calendar color.' });
+      return res.status(400).json({ error: 'Unknown calendar colour.' });
     }
     if (color === undefined && top !== true) {
       return res.status(400).json({ error: 'Nothing to update.' });

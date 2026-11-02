@@ -36,10 +36,10 @@ It has two parts:
 | `/calendar link <url> [name]` | `/cal link` | Connect a Google Calendar or `.ics` feed | Private |
 | `/calendar share [until]` | `/cal share` | Post your upcoming schedule (`tdy`, `tmr`, `3d`, `1w`, ...) | **Public** |
 | `/calendar daily [time] [enabled] [timezone] [test]` | `/cal daily` | Configure the daily digest | Private |
-| `/calendar view` | `/cal view` | Browse the next 7 days, one day per page, one colored card per calendar | Private |
+| `/calendar view` | `/cal view` | Browse the next 7 days, one day per page, one coloured card per calendar | Private |
 | `/calendar list` | `/cal list` | List connected calendars | Private |
 | `/calendar unlink [calendar]` | `/cal unlink` | Remove one calendar, or all of them | Private |
-| `/calendar color <calendar> <color>` | `/cal color` | Set a calendar's Google color (shown in schedules, reminders and the dashboard) | Private |
+| `/calendar colour <calendar> <colour>` | `/cal colour` | Set a calendar's Google colour (shown in schedules, reminders and the dashboard) | Private |
 | `/calendar top <calendar>` | `/cal top` | Show a calendar's group first | Private |
 | `/calendar settings [remind_before]` | `/cal settings` | Set the reminder lead time (`45m`, `2h`, `1d`, up to 7 days) | Private |
 | `/calendar test` | `/cal test` | Send a test reminder DM | Private |

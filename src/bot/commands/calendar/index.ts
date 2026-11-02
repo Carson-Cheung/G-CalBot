@@ -32,7 +32,7 @@ async function executeCalendar(
       return handleUnlink(interaction, reminderEngine);
     case 'settings':
       return handleSettings(interaction);
-    case 'color':
+    case 'colour':
       return handleColor(interaction, reminderEngine);
     case 'top':
       return handleTop(interaction, reminderEngine);
