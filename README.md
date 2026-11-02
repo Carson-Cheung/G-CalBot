@@ -125,4 +125,4 @@ src/
 - Feed URLs are stored in your database, or in `data/` locally, which is never committed.
 - Users can delete everything stored about them with `/cal deletedata`.
 
-See the [Privacy Policy](https://g-calbot.onrender.com/privacy) and [Terms of Service](https://g-calbot.onrender.com/terms).
+See the [Privacy Policy](https://g-calbot-prod.onrender.com/privacy) and [Terms of Service](https://g-calbot-prod.onrender.com/terms).

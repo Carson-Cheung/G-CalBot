@@ -3,7 +3,7 @@ import path from 'path';
 
 dotenv.config();
 
-const DEFAULT_PUBLIC_URL = 'https://g-calbot.onrender.com';
+const DEFAULT_PUBLIC_URL = 'https://g-calbot-prod.onrender.com';
 export const MAX_CALENDARS_PER_USER = 10;
 // Events are loaded 7 days ahead and sent-reminder records kept 7 days, so longer leads would miss or repeat.
 export const MAX_REMINDER_MINUTES = 7 * 24 * 60;
