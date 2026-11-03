@@ -3,7 +3,7 @@ import { Client, EmbedBuilder, User } from 'discord.js';
 import { config } from '../config';
 import { storage } from '../db/storage';
 import { DEMO_USER_ID, resolveUserCalendars } from '../db/userDefaults';
-import { CalendarSyncService } from './syncService';
+import { CalendarSyncService, describeFetchError } from './syncService';
 import { CalendarEvent, UserCalendarConfig } from '../types';
 import {
   floatingDateKey,
@@ -144,7 +144,7 @@ export class ReminderEngine {
       }
       return events;
     } catch (err) {
-      console.error(`Failed to fetch calendar for user ${user.userId}:`, err);
+      console.error(`Failed to fetch calendar for user ${user.userId}: ${describeFetchError(err)}`);
       return cached?.events || [];
     } finally {
       if (this.inflight.get(inflightKey) === fetchPromise) {

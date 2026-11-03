@@ -10,11 +10,44 @@ import { getTimezoneDayRange } from '../utils/time';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_RETRIES = 1;
+const FETCH_RETRY_DELAY_MS = 1_000;
 const MAX_REDIRECTS = 5;
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
 const MAX_EVENTS_PER_CALENDAR = 500;
 const MAX_OCCURRENCES_PER_EVENT = 100;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+// Network blips worth one more attempt. Private-address and HTTP-status failures are not retried.
+const TRANSIENT_ERROR_CODES = new Set([
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EAI_AGAIN',
+  'ABORT_ERR',
+]);
+
+function errorCodes(err: unknown): string[] {
+  if (!err || typeof err !== 'object') return [];
+  const { code, errors } = err as { code?: unknown; errors?: unknown };
+  const nested = Array.isArray(errors) ? errors.flatMap(errorCodes) : [];
+  return typeof code === 'string' ? [code, ...nested] : nested;
+}
+
+function isTransientNetworkError(err: unknown): boolean {
+  return errorCodes(err).some((code) => TRANSIENT_ERROR_CODES.has(code));
+}
+
+/**
+ * One-line summary of a failed feed request. Node bundles the IPv4 and IPv6 attempts into an
+ * AggregateError whose stack trace runs to dozens of lines.
+ */
+export function describeFetchError(err: unknown): string {
+  const codes = [...new Set(errorCodes(err))];
+  const message = err instanceof Error && err.message ? err.message : String(err);
+  return codes.length > 0 ? `${codes.join(', ')} (${message})` : message;
+}
 
 /** iCal text properties arrive as `{ val, params }` when they carry parameters such as LANGUAGE. */
 function textValue(value: ParameterValue | undefined): string | undefined {
@@ -285,6 +318,18 @@ export class CalendarSyncService {
     });
   }
 
+  private static async requestWithRetry(url: URL): Promise<http.IncomingMessage> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await CalendarSyncService.requestOnce(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+      } catch (err) {
+        if (attempt >= FETCH_RETRIES || !isTransientNetworkError(err)) throw err;
+        console.warn(`Calendar feed request to ${url.host} failed (${describeFetchError(err)}); retrying.`);
+        await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_DELAY_MS * (attempt + 1)));
+      }
+    }
+  }
+
   /**
    * Downloads a feed, following redirects manually so every hop is re-checked
    * against the SSRF rules, and caps the body size while streaming.
@@ -300,8 +345,7 @@ export class CalendarSyncService {
         );
       }
 
-      const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-      const response = await CalendarSyncService.requestOnce(new URL(currentUrl), signal);
+      const response = await CalendarSyncService.requestWithRetry(new URL(currentUrl));
       const status = response.statusCode ?? 0;
 
       if (REDIRECT_STATUSES.has(status)) {
@@ -458,13 +502,13 @@ export class CalendarSyncService {
     );
 
     const merged = new Map<string, CalendarEvent>();
-    for (const res of results) {
+    for (const [index, res] of results.entries()) {
       if (res.status === 'fulfilled') {
         for (const ev of res.value) {
           if (!merged.has(ev.id)) merged.set(ev.id, ev);
         }
       } else {
-        console.warn('Could not fetch one of the user calendars:', res.reason);
+        console.warn(`Could not fetch calendar "${calendars[index]?.name}": ${describeFetchError(res.reason)}`);
       }
     }
 
