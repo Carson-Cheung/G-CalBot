@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { config, MAX_CALENDARS_PER_USER } from '../src/config';
 import { storage } from '../src/db/storage';
+import { DEMO_USER_ID } from '../src/db/userDefaults';
 import type { UserCalendarConfig } from '../src/types';
 
 const NOW = '2026-11-02T00:00:00.000Z';
@@ -35,6 +36,112 @@ describe('storage test setup', () => {
   it('uses the throwaway data file', () => {
     expect(config.storagePath).toBe(path.join(tempDir, 'database.json'));
     expect(fs.existsSync(config.storagePath)).toBe(true);
+  });
+});
+
+describe('getUserCount', () => {
+  it('excludes demo-user, starts at 0, and updates on real user adds, updates, and deletes', () => {
+    const userA = '100000000000000091';
+    const userB = '100000000000000092';
+
+    try {
+      expect(DEMO_USER_ID).toBe('demo-user');
+      expect(storage.getUser(DEMO_USER_ID)).toBeDefined();
+      expect(storage.getUserCount()).toBe(0);
+
+      storage.addCalendar(userA, 'Work', urlFor(1));
+      expect(storage.getUserCount()).toBe(1);
+
+      // Updating an existing user should not change the count.
+      storage.addCalendar(userA, 'Personal', urlFor(2));
+      const existing = storage.getUser(userA)!;
+      storage.saveUser({ ...existing, updatedAt: NOW });
+      expect(storage.getUserCount()).toBe(1);
+
+      // Saving demo-user should not change the count.
+      const demo = storage.getUser(DEMO_USER_ID)!;
+      storage.saveUser({ ...demo, updatedAt: NOW });
+      expect(storage.getUserCount()).toBe(1);
+
+      storage.addCalendar(userB, 'School', urlFor(3));
+      expect(storage.getUserCount()).toBe(2);
+
+      expect(storage.deleteUser(userA)).toBe(true);
+      expect(storage.getUserCount()).toBe(1);
+
+      expect(storage.deleteUser(userA)).toBe(false);
+      expect(storage.getUserCount()).toBe(1);
+
+      expect(storage.deleteUser(userB)).toBe(true);
+      expect(storage.getUserCount()).toBe(0);
+    } finally {
+      storage.deleteUser(userA);
+      storage.deleteUser(userB);
+    }
+  });
+});
+
+describe('onUserCountChange', () => {
+  it('fires only when the real user count changes and stops after unsubscribe', () => {
+    const userA = '100000000000000093';
+    const userB = '100000000000000094';
+    const userC = '100000000000000095';
+    const counts: number[] = [];
+    const unsubscribe = storage.onUserCountChange((count) => counts.push(count));
+
+    try {
+      storage.addCalendar(userA, 'Primary', urlFor(1));
+      expect(counts).toEqual([1]);
+
+      // Updating existing user or saving demo-user does not fire the listener.
+      storage.addCalendar(userA, 'Extra', urlFor(2));
+      const demo = storage.getUser(DEMO_USER_ID)!;
+      storage.saveUser({ ...demo, updatedAt: NOW });
+      expect(counts).toEqual([1]);
+
+      storage.addCalendar(userB, 'Primary', urlFor(3));
+      expect(counts).toEqual([1, 2]);
+
+      storage.deleteUser(userA);
+      expect(counts).toEqual([1, 2, 1]);
+
+      // Deleting an already-absent user does not fire the listener.
+      storage.deleteUser(userA);
+      expect(counts).toEqual([1, 2, 1]);
+
+      unsubscribe();
+
+      storage.deleteUser(userB);
+      storage.addCalendar(userC, 'Primary', urlFor(4));
+      expect(counts).toEqual([1, 2, 1]);
+    } finally {
+      unsubscribe();
+      storage.deleteUser(userA);
+      storage.deleteUser(userB);
+      storage.deleteUser(userC);
+    }
+  });
+
+  it('catches per-listener errors so persistence and other listeners still succeed', () => {
+    const userId = '100000000000000096';
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const seen: number[] = [];
+    const unsubBad = storage.onUserCountChange(() => {
+      throw new Error('listener boom');
+    });
+    const unsubGood = storage.onUserCountChange((count) => seen.push(count));
+
+    try {
+      storage.addCalendar(userId, 'Primary', urlFor(1));
+      expect(seen).toEqual([1]);
+      const persisted = JSON.parse(fs.readFileSync(config.storagePath, 'utf-8'));
+      expect(persisted.users[userId]).toBeDefined();
+    } finally {
+      unsubBad();
+      unsubGood();
+      storage.deleteUser(userId);
+      errorSpy.mockRestore();
+    }
   });
 });
 

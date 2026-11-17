@@ -50,6 +50,7 @@ export function App() {
 
       <Navbar
         postgres={health?.postgres}
+        userCount={health?.userCount ?? null}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         eventCount={events.length}

@@ -7,6 +7,7 @@ import {
   ChatInputCommandInteraction,
 } from 'discord.js';
 import { commandsMap } from './commands';
+import { storage } from '../db/storage';
 import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
@@ -28,6 +29,10 @@ function describeCommand(interaction: ChatInputCommandInteraction): string {
   return `/${parts.join(' ')} (${context})`;
 }
 
+export function formatBotActivity(userCount: number): string {
+  return `/comms | 📅 ${userCount} ${userCount === 1 ? 'user' : 'users'}`;
+}
+
 export function createBot() {
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
@@ -35,6 +40,23 @@ export function createBot() {
   });
 
   const reminderEngine = new ReminderEngine(client);
+  let unsubscribeUserCount: (() => void) | null = null;
+  let destroyed = false;
+
+  const updatePresence = (count: number) => {
+    if (!client.isReady()) return;
+    client.user?.setActivity(formatBotActivity(count), {
+      type: ActivityType.Watching,
+    });
+  };
+
+  const originalDestroy = client.destroy.bind(client);
+  client.destroy = async () => {
+    destroyed = true;
+    unsubscribeUserCount?.();
+    unsubscribeUserCount = null;
+    return originalDestroy();
+  };
 
   client.on(Events.Error, (err) => console.error('Discord client error:', err));
   client.on(Events.ShardError, (err) => console.error('Discord shard error:', err));
@@ -54,9 +76,10 @@ export function createBot() {
     const botTag = client.user?.tag || 'G-CalBot#2765';
     console.log(`🤖 Discord bot logged in as ${botTag}!`);
     activityLogger.log('system', '🤖', `Discord bot logged in as ${botTag}!`);
-    client.user?.setActivity('/comms | 📅 Syncing', {
-      type: ActivityType.Watching,
-    });
+    updatePresence(storage.getUserCount());
+    if (!destroyed && !unsubscribeUserCount) {
+      unsubscribeUserCount = storage.onUserCountChange(updatePresence);
+    }
     reminderEngine.start();
 
     await deployCommands();

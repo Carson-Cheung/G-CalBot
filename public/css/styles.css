@@ -184,7 +184,8 @@ body {
 .brand-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
 }
 
 .brand-title {

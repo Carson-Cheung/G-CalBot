@@ -55,6 +55,7 @@ class Storage {
   private pool: Pool | null = null;
   private pgWriteChain: Promise<void> = Promise.resolve();
   private closing: Promise<void> | null = null;
+  private userCountListeners = new Set<(count: number) => void>();
 
   constructor() {
     this.filePath = config.storagePath;
@@ -142,6 +143,7 @@ class Storage {
    * Migrates and merges any local users into Neon PostgreSQL.
    */
   public async initDatabase(): Promise<void> {
+    const prevCount = this.getUserCount();
     this.ensureDemoUser();
     if (!config.databaseUrl) {
       console.log(
@@ -191,6 +193,7 @@ class Storage {
       console.log(
         `🐘 Connected to Neon PostgreSQL database (${Object.keys(this.data.users).length} users loaded/migrated)`
       );
+      this.notifyIfUserCountChanged(prevCount);
     } catch (err) {
       console.error('❌ Failed to connect to Neon PostgreSQL database:', err);
       console.log('📦 Falling back to local JSON database.');
@@ -262,13 +265,43 @@ class Storage {
     return Object.values(this.data.users).map(normalizeUserCalendars);
   }
 
+  public getUserCount(): number {
+    return Object.keys(this.data.users).filter((id) => id !== DEMO_USER_ID).length;
+  }
+
+  public onUserCountChange(listener: (count: number) => void): () => void {
+    this.userCountListeners.add(listener);
+    return () => {
+      this.userCountListeners.delete(listener);
+    };
+  }
+
+  private notifyUserCountChange(count: number): void {
+    for (const listener of this.userCountListeners) {
+      try {
+        listener(count);
+      } catch (err) {
+        console.error('Error in user count change listener:', err);
+      }
+    }
+  }
+
+  private notifyIfUserCountChanged(prevCount: number): void {
+    const nextCount = this.getUserCount();
+    if (nextCount !== prevCount) {
+      this.notifyUserCountChange(nextCount);
+    }
+  }
+
   public saveUser(user: UserCalendarConfig): void {
+    const prevCount = this.getUserCount();
     normalizeUserCalendars(user);
     this.data.users[user.userId] = user;
     this.persist();
     this.enqueuePgWrite(`sync user ${user.userId}`, (pool) =>
       upsertUserToPostgres(pool, user)
     );
+    this.notifyIfUserCountChanged(prevCount);
   }
 
   /** Removes everything stored about a user: settings, calendars and sent-reminder records. */
@@ -277,12 +310,14 @@ class Storage {
     const reminderKeys = Object.keys(this.data.sentReminders).filter((key) => key.startsWith(prefix));
     if (!this.data.users[userId] && reminderKeys.length === 0) return false;
 
+    const prevCount = this.getUserCount();
     delete this.data.users[userId];
     for (const key of reminderKeys) delete this.data.sentReminders[key];
     this.persist();
     this.enqueuePgWrite(`delete user ${userId}`, (pool) =>
       deleteUserFromPostgres(pool, userId)
     );
+    this.notifyIfUserCountChanged(prevCount);
     return true;
   }
 

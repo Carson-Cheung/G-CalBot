@@ -5,6 +5,7 @@ import { getUserAvatarUrl } from '../utils/user';
 
 interface NavbarProps {
   postgres: boolean | undefined;
+  userCount: number | null;
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   eventCount: number;
@@ -19,6 +20,7 @@ interface NavbarProps {
 
 export function Navbar({
   postgres,
+  userCount,
   activeTab,
   onTabChange,
   eventCount,
@@ -52,6 +54,7 @@ export function Navbar({
             <span className="brand-badge-live">
               <span className="live-indicator-dot" aria-hidden="true" />
               {postgres ? 'Neon Postgres • 24/7 Sync' : 'Local JSON • 24/7 Sync'}
+              {userCount !== null ? ` • ${userCount} ${userCount === 1 ? 'user' : 'users'}` : ''}
             </span>
           </div>
           <span className="brand-subtitle">Google Calendar Discord Hub</span>

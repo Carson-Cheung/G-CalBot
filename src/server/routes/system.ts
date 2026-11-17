@@ -13,6 +13,7 @@ export function createSystemRouter(reminderEngine?: ReminderEngine): Router {
       status: 'ok',
       time: new Date().toISOString(),
       storage: storage.isPostgresConnected() ? 'neon-postgresql' : 'local-json',
+      userCount: storage.getUserCount(),
     });
   });
 
@@ -36,7 +37,7 @@ export function createSystemRouter(reminderEngine?: ReminderEngine): Router {
     const orderParam = typeof req.query.order === 'string' ? req.query.order.toLowerCase() : '';
     const order = orderParam === 'desc' || orderParam === 'newest' ? 'desc' : 'asc';
     const logs = activityLogger.getLogs(order);
-    res.json({ status: 'ok', count: logs.length, logs });
+    res.json({ status: 'ok', count: logs.length, userCount: storage.getUserCount(), logs });
   });
 
   return router;

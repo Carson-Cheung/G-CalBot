@@ -59,6 +59,7 @@ export interface SessionResponse {
 
 export interface HealthResponse {
   storage?: string;
+  userCount?: number;
 }
 
 export interface SettingsPayload {
