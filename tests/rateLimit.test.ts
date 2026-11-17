@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { FixedWindowLimiter } from '../src/server/rateLimit';
+import { FixedWindowLimiter, rateLimitKey } from '../src/server/rateLimit';
 
 describe('FixedWindowLimiter', () => {
   let limiter: FixedWindowLimiter;
@@ -27,5 +27,29 @@ describe('FixedWindowLimiter', () => {
     limiter.hit('c', 0);
     // 'a' was evicted, so its count starts fresh instead of being limited.
     expect(limiter.hit('a', 1)).toBe(0);
+  });
+});
+
+describe('rateLimitKey', () => {
+  it('returns IPv4 addresses unchanged', () => {
+    expect(rateLimitKey('203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('unwraps IPv4-mapped IPv6 addresses', () => {
+    expect(rateLimitKey('::ffff:203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('groups IPv6 addresses by /64', () => {
+    const a = rateLimitKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd');
+    expect(rateLimitKey('2001:db8:1:2::1')).toBe(a);
+    expect(rateLimitKey('2001:db8:1:3::1')).not.toBe(a);
+  });
+
+  it('gives compressed and expanded spellings the same key', () => {
+    expect(rateLimitKey('2001:db8::1')).toBe(rateLimitKey('2001:db8:0:0:ffff::2'));
+  });
+
+  it('returns a non-IP string unchanged', () => {
+    expect(rateLimitKey('unknown')).toBe('unknown');
   });
 });

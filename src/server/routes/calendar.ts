@@ -5,7 +5,7 @@ import { CalendarSyncService } from '../../calendar/syncService';
 import { ReminderEngine } from '../../calendar/reminderEngine';
 import { CalendarEvent, UserCalendarConfig } from '../../types';
 import { findCalendarColor } from '../../calendarColors';
-import { isValidTimezone, isValid24HourTime } from '../../utils/time';
+import { floatingDateKey, isValidTimezone, isValid24HourTime } from '../../utils/time';
 import { activityLogger, censorUsername } from '../../utils/activityLogger';
 import { FixedWindowLimiter, clientIp } from '../rateLimit';
 import { authorizeUser, getAuthorized } from '../requestAuth';
@@ -25,14 +25,22 @@ function isValidReminderMinutes(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= MAX_REMINDER_MINUTES;
 }
 
+/**
+ * All-day dates are server-local midnights. The dashboard reads them as UTC dates, so they
+ * are sent as UTC midnights of the same calendar date, whatever zone the server runs in.
+ */
+function allDayIso(date: Date): string {
+  return `${floatingDateKey(date)}T00:00:00.000Z`;
+}
+
 function serializeEvent(e: CalendarEvent) {
   return {
     id: e.id,
     title: e.title,
     description: e.description,
     location: e.location,
-    start: e.start.toISOString(),
-    end: e.end.toISOString(),
+    start: e.isAllDay ? allDayIso(e.start) : e.start.toISOString(),
+    end: e.isAllDay ? allDayIso(e.end) : e.end.toISOString(),
     isAllDay: e.isAllDay,
     calendarName: e.calendarName,
   };
@@ -121,6 +129,9 @@ function buildTestEvent(isDemo: boolean): CalendarEvent {
 export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
   const router = Router();
 
+  // A manual sync downloads every feed again. Keyed by user, so the public demo shares one allowance.
+  const syncLimiter = new FixedWindowLimiter({ windowMs: 30 * 1000, max: 1 });
+
   router.get('/user/:userId/calendar', allowAnyUser, async (req: Request, res: Response) => {
     const { userId, isDemo } = getAuthorized(res);
     const user = storage.getUser(userId);
@@ -139,7 +150,8 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
     }
 
     try {
-      const isManualSync = req.query.sync === 'true';
+      // Over the limit, the request is served from the cache like any other read.
+      const isManualSync = req.query.sync === 'true' && syncLimiter.hit(userId) === 0;
       if (isManualSync) {
         reminderEngine?.invalidateUserCache(userId);
         activityLogger.log(
@@ -193,13 +205,14 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       });
     }
 
-    const existing = storage.getUser(userId);
-    const calendarCount = existing?.calendars.length ?? 0;
-    const isReplacingExisting = existing?.calendars.some((c) => c.url === cleanUrl) ?? false;
-    if (!isReplacingExisting && calendarCount >= MAX_CALENDARS_PER_USER) {
-      return res.status(400).json({
-        error: `You can link up to ${MAX_CALENDARS_PER_USER} calendars. Remove one before adding another.`,
-      });
+    const limitError = `You can link up to ${MAX_CALENDARS_PER_USER} calendars. Remove one before adding another.`;
+    if (storage.isAtCalendarLimit(userId, cleanUrl)) {
+      return res.status(400).json({ error: limitError });
+    }
+    const calendarName = name?.trim().slice(0, MAX_CALENDAR_NAME_LENGTH) || undefined;
+    const nameProblem = calendarName && storage.calendarNameProblem(userId, calendarName, cleanUrl);
+    if (nameProblem) {
+      return res.status(400).json({ error: nameProblem });
     }
 
     let events: CalendarEvent[];
@@ -210,15 +223,16 @@ export function createCalendarRouter(reminderEngine?: ReminderEngine): Router {
       return res.status(400).json({ error: message });
     }
 
-    const calendarName =
-      (name && name.trim().slice(0, MAX_CALENDAR_NAME_LENGTH)) ||
-      (calendarCount > 0 ? `Calendar ${calendarCount + 1}` : 'Primary');
+    // Checked again because another request may have linked a calendar while this feed was downloading.
+    if (storage.isAtCalendarLimit(userId, cleanUrl)) {
+      return res.status(400).json({ error: limitError });
+    }
 
     const linked = storage.addCalendar(
       userId,
       calendarName,
       cleanUrl,
-      reminderMinutes ?? existing?.reminderMinutes ?? DEFAULT_REMINDER_MINUTES
+      reminderMinutes ?? storage.getUser(userId)?.reminderMinutes ?? DEFAULT_REMINDER_MINUTES
     );
     reminderEngine?.invalidateUserCache(userId);
 

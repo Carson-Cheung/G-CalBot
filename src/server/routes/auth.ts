@@ -3,6 +3,7 @@ import { config } from '../../config';
 import { createSessionToken } from '../../utils/session';
 import { redeemLoginCode } from '../../utils/loginLinks';
 import { activityLogger, censorUsername } from '../../utils/activityLogger';
+import { FixedWindowLimiter, clientIp } from '../rateLimit';
 import { DEMO_USER_ID, getRequestSession } from '../requestAuth';
 
 const DISCORD_API = 'https://discord.com/api';
@@ -118,10 +119,15 @@ authRouter.post(['/auth/link', '/link'], (req: Request, res: Response) => {
   res.json({ sessionToken: createSessionToken(user) });
 });
 
+// The public activity feed keeps only a handful of entries, so the entries these two
+// routes write are limited; otherwise a loop of requests would push everything else out.
+const connectLogLimiter = new FixedWindowLimiter({ windowMs: 60 * 1000, max: 1 });
+const handoffLogLimiter = new FixedWindowLimiter({ windowMs: 60 * 1000, max: 1 });
+
 authRouter.get(['/auth/session', '/session'], (req: Request, res: Response) => {
   const session = getRequestSession(req);
   if (session) {
-    if (req.query.initial === 'true') {
+    if (req.query.initial === 'true' && connectLogLimiter.hit(session.userId) === 0) {
       activityLogger.log(
         'system',
         '🌐',
@@ -137,12 +143,14 @@ authRouter.get(['/auth/session', '/session'], (req: Request, res: Response) => {
   });
 });
 
-authRouter.post(['/auth/activity-handoff', '/activity-handoff'], (_req: Request, res: Response) => {
-  activityLogger.log(
-    'system',
-    '📱',
-    'Discord Activity launched demo/guest session............. Was that you? ;)'
-  );
+authRouter.post(['/auth/activity-handoff', '/activity-handoff'], (req: Request, res: Response) => {
+  if (handoffLogLimiter.hit(clientIp(req)) === 0) {
+    activityLogger.log(
+      'system',
+      '📱',
+      'Discord Activity launched demo/guest session............. Was that you? ;)'
+    );
+  }
   return res.json({ authenticated: false });
 });
 

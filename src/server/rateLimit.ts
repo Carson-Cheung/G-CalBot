@@ -1,4 +1,6 @@
+import net from 'net';
 import { Request, Response, NextFunction } from 'express';
+import { expandIpv6 } from '../utils/ip';
 
 const DEFAULT_MAX_KEYS = 10_000;
 
@@ -61,8 +63,23 @@ export class FixedWindowLimiter {
   }
 }
 
+/**
+ * Rate-limit key for an address. One IPv6 subscriber controls a whole /64, so those
+ * addresses share a key; otherwise a client could dodge every limit by rotating addresses.
+ */
+export function rateLimitKey(ip: string): string {
+  const groups = net.isIPv6(ip) ? expandIpv6(ip) : null;
+  if (!groups) return ip;
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
+  // An IPv4 client seen through a dual-stack socket (::ffff:a.b.c.d).
+  if (!(g0 | g1 | g2 | g3 | g4) && g5 === 0xffff) {
+    return `${g6 >> 8}.${g6 & 255}.${g7 >> 8}.${g7 & 255}`;
+  }
+  return `${[g0, g1, g2, g3].map((g) => g.toString(16)).join(':')}::/64`;
+}
+
 export function clientIp(req: Request): string {
-  return req.ip || req.socket.remoteAddress || 'unknown';
+  return rateLimitKey(req.ip || req.socket.remoteAddress || 'unknown');
 }
 
 export function rateLimitMiddleware(
