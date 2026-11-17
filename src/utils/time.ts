@@ -54,7 +54,8 @@ export function isValid24HourTime(time: string): boolean {
   return TIME_24H_PATTERN.test(time.trim());
 }
 
-function resolveTimezone(tz: string | undefined): string {
+/** The given zone when it is a valid IANA name, otherwise the default (Eastern time). */
+export function resolveTimezone(tz: string | undefined): string {
   return tz && isValidTimezone(tz) ? tz.trim() : DEFAULT_TIMEZONE;
 }
 
@@ -124,48 +125,20 @@ function endOfZonedDay(date: CalendarDate, timeZone: string): Date {
 }
 
 /**
- * Returns timezone-accurate start and end Date objects for a user's day range.
- * Defaults to 'America/New_York' on invalid timezone.
- *
- * `(date, timeZone, daysCount)` spans `daysCount` days starting on the local day of `date`.
- * `(date, daysOffset, timeZone)` is the legacy form and covers the single day `daysOffset` away.
+ * Returns timezone-accurate start and end Date objects spanning `daysCount` days,
+ * starting on the local day of `date`. Falls back to the default zone when `timeZone` is invalid.
  */
 export function getTimezoneDayRange(
   date: Date,
-  timeZone: string,
-  daysCount?: number
-): { start: Date; end: Date; dateLabel: string };
-export function getTimezoneDayRange(
-  date: Date,
-  daysOffset: number,
-  timeZone?: string
-): { start: Date; end: Date; dateLabel: string };
-export function getTimezoneDayRange(
-  date: Date,
-  timeZoneOrOffset: string | number = DEFAULT_TIMEZONE,
-  daysCountOrTimeZone: number | string = 1
+  timeZone: string = DEFAULT_TIMEZONE,
+  daysCount = 1
 ): { start: Date; end: Date; dateLabel: string } {
-  let tz: string | undefined;
-  let startOffset: number;
-  let endOffset: number;
-
-  if (typeof timeZoneOrOffset === 'number') {
-    tz = typeof daysCountOrTimeZone === 'string' ? daysCountOrTimeZone : undefined;
-    startOffset = timeZoneOrOffset;
-    endOffset = timeZoneOrOffset;
-  } else {
-    tz = timeZoneOrOffset;
-    const days = typeof daysCountOrTimeZone === 'number' ? daysCountOrTimeZone : 1;
-    startOffset = 0;
-    endOffset = Math.max(0, days - 1);
-  }
-
-  const safeTz = resolveTimezone(tz);
+  const safeTz = resolveTimezone(timeZone);
   const localDate = getZonedCalendarDate(date, safeTz);
 
   return {
-    start: startOfZonedDay(addDays(localDate, startOffset), safeTz),
-    end: endOfZonedDay(addDays(localDate, endOffset), safeTz),
+    start: startOfZonedDay(localDate, safeTz),
+    end: endOfZonedDay(addDays(localDate, Math.max(0, daysCount - 1)), safeTz),
     dateLabel: date.toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'short',

@@ -6,7 +6,7 @@ import dns from 'dns';
 import http from 'http';
 import https from 'https';
 import { CalendarEvent, LinkedCalendar } from '../types';
-import { getTimezoneDayRange } from '../utils/time';
+import { expandIpv6 } from '../utils/ip';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10_000;
@@ -16,6 +16,7 @@ const MAX_REDIRECTS = 5;
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
 const MAX_EVENTS_PER_CALENDAR = 500;
 const MAX_OCCURRENCES_PER_EVENT = 100;
+const MAX_RECURRENCE_EXPANSION_MS = 5_000;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 // Network blips worth one more attempt. Private-address and HTTP-status failures are not retried.
 const TRANSIENT_ERROR_CODES = new Set([
@@ -57,27 +58,10 @@ function textValue(value: ParameterValue | undefined): string | undefined {
   return trimmed || undefined;
 }
 
-/** Expands an IPv6 address (including `::` and a dotted IPv4 tail) into eight 16-bit groups. */
-function expandIpv6(ip: string): number[] | null {
-  let address = ip.toLowerCase().split('%')[0];
-  const dotted = address.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
-  if (dotted) {
-    if (!net.isIPv4(dotted[2])) return null;
-    const [a, b, c, d] = dotted[2].split('.').map(Number);
-    address = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
-  }
-
-  const halves = address.split('::');
-  if (halves.length > 2) return null;
-  const parse = (part: string) => (part ? part.split(':') : []);
-  const head = parse(halves[0]);
-  const tail = halves.length === 2 ? parse(halves[1]) : [];
-  const missing = 8 - head.length - tail.length;
-  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
-
-  const groups = [...head, ...Array(halves.length === 2 ? missing : 0).fill('0'), ...tail];
-  if (groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
-  return groups.map((g) => parseInt(g, 16));
+export interface CalendarFetchResult {
+  events: CalendarEvent[];
+  /** A feed failed with a network error, so its last known events were kept and a retry is due soon. */
+  hadTransientFailure: boolean;
 }
 
 export class CalendarSyncService {
@@ -413,31 +397,46 @@ export class CalendarSyncService {
     const rangeStart = new Date(now.getTime() - DAY_MS);
     const rangeEnd = new Date(now.getTime() + windowDays * DAY_MS);
     const eventMap = new Map<string, CalendarEvent>();
+    const expansionStarted = Date.now();
+    let skippedRecurring = 0;
 
     for (const component of Object.values(parsed)) {
       if (!component || component.type !== 'VEVENT') continue;
       const vevent = component as VEvent;
       if (vevent.status === 'CANCELLED' || !vevent.start) continue;
 
+      // Expansion blocks the event loop, so one feed packed with costly rules must not stall everyone's reminders.
+      if (vevent.rrule && Date.now() - expansionStarted > MAX_RECURRENCE_EXPANSION_MS) {
+        skippedRecurring++;
+        continue;
+      }
+
       let instances: EventInstance[];
       try {
-        instances = nodeIcal.expandRecurringEvent(vevent, { from: rangeStart, to: rangeEnd });
+        // expandOngoing keeps multi-day events that began before the window and are still running.
+        instances = nodeIcal.expandRecurringEvent(vevent, {
+          from: rangeStart,
+          to: rangeEnd,
+          expandOngoing: true,
+        });
       } catch (err) {
         console.warn('Error expanding calendar event:', err);
         continue;
       }
 
-      // Bound occurrences so a high-frequency RRULE cannot flood the event list.
-      for (const instance of instances.slice(0, MAX_OCCURRENCES_PER_EVENT)) {
+      // All-day dates are anchored to server-local midnight, so give a day of slack
+      // for users whose local day ends later than the server's.
+      const upcoming = instances.filter(
+        (instance) => instance.end.getTime() + (instance.isFullDay ? DAY_MS : 0) >= now.getTime()
+      );
+
+      // Capped after ended occurrences are dropped, so a frequent rule keeps its future ones.
+      for (const instance of upcoming.slice(0, MAX_OCCURRENCES_PER_EVENT)) {
         const source = instance.event;
         if (source.status === 'CANCELLED') continue;
 
         const start = new Date(instance.start);
         const end = new Date(instance.end);
-        // All-day dates are anchored to server-local midnight, so give a day of slack
-        // for users whose local day ends later than the server's.
-        const effectiveEnd = instance.isFullDay ? end.getTime() + DAY_MS : end.getTime();
-        if (effectiveEnd < now.getTime()) continue;
 
         // Bounded lengths keep Discord embeds under their field limits (error 50035).
         const title =
@@ -459,6 +458,12 @@ export class CalendarSyncService {
           calendarName,
         });
       }
+    }
+
+    if (skippedRecurring > 0) {
+      console.warn(
+        `Skipped ${skippedRecurring} recurring event(s) in "${calendarName ?? 'calendar'}": expansion took too long.`
+      );
     }
 
     return Array.from(eventMap.values())
@@ -488,11 +493,14 @@ export class CalendarSyncService {
 
   /**
    * Fetches multiple calendars concurrently, combines them, deduplicates, and sorts chronologically.
+   * A calendar that fails with a network error keeps its events from `previous` (the last
+   * result), so a blip does not make them vanish. Any other failure drops that calendar's events.
    */
   public static async fetchMultipleCalendars(
     calendars: LinkedCalendar[],
-    windowDays: number = 7
-  ): Promise<CalendarEvent[]> {
+    windowDays: number = 7,
+    previous: CalendarEvent[] = []
+  ): Promise<CalendarFetchResult> {
     const results = await Promise.allSettled(
       calendars.map((cal) =>
         CalendarSyncService.fetchUpcomingEvents(cal.url, windowDays, cal.name).then((events) =>
@@ -501,23 +509,32 @@ export class CalendarSyncService {
       )
     );
 
+    const now = Date.now();
     const merged = new Map<string, CalendarEvent>();
+    let hadTransientFailure = false;
+
     for (const [index, res] of results.entries()) {
+      const calendar = calendars[index]!;
+      let events: CalendarEvent[];
       if (res.status === 'fulfilled') {
-        for (const ev of res.value) {
-          if (!merged.has(ev.id)) merged.set(ev.id, ev);
-        }
+        events = res.value;
       } else {
-        console.warn(`Could not fetch calendar "${calendars[index]?.name}": ${describeFetchError(res.reason)}`);
+        console.warn(`Could not fetch calendar "${calendar.name}": ${describeFetchError(res.reason)}`);
+        if (!isTransientNetworkError(res.reason)) continue;
+        hadTransientFailure = true;
+        // Same day of slack for all-day events as extractEvents.
+        events = previous.filter(
+          (ev) => ev.calendarId === calendar.id && ev.end.getTime() + (ev.isAllDay ? DAY_MS : 0) >= now
+        );
+      }
+      for (const ev of events) {
+        if (!merged.has(ev.id)) merged.set(ev.id, ev);
       }
     }
 
-    return Array.from(merged.values()).sort((a, b) => a.start.getTime() - b.start.getTime());
+    return {
+      events: Array.from(merged.values()).sort((a, b) => a.start.getTime() - b.start.getTime()),
+      hadTransientFailure,
+    };
   }
-
-  /**
-   * Timezone-accurate start and end Date objects for a user's day range.
-   * Static wrapper preserving backwards compatibility with existing callers.
-   */
-  public static getTimezoneDayRange = getTimezoneDayRange;
 }

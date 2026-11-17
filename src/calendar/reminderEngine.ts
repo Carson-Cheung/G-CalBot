@@ -3,18 +3,17 @@ import { Client, EmbedBuilder, User } from 'discord.js';
 import { config } from '../config';
 import { storage } from '../db/storage';
 import { DEMO_USER_ID, resolveUserCalendars } from '../db/userDefaults';
-import { CalendarSyncService, describeFetchError } from './syncService';
+import { CalendarFetchResult, CalendarSyncService, describeFetchError } from './syncService';
 import { CalendarEvent, UserCalendarConfig } from '../types';
 import {
   floatingDateKey,
   getTimezoneDayRange,
-  isValidTimezone,
+  resolveTimezone,
   zonedDateKey,
   formatDurationMinutes,
 } from '../utils/time';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
 
-const DEFAULT_TIMEZONE = 'America/Toronto';
 const DEFAULT_DIGEST_TIME = '08:00';
 const DEFAULT_WINDOW_DAYS = 7;
 const CHECK_INTERVAL_MS = 60 * 1000;
@@ -24,16 +23,23 @@ const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const LATE_REMINDER_GRACE_MS = 5 * 60 * 1000;
 const USER_CHECK_CONCURRENCY = 5;
 const DIGEST_EVENT_LIMIT = 15;
+// After a feed fails with a network error, the next check retries instead of waiting out the cache.
+const FAILED_FETCH_RETRY_MS = 60 * 1000;
+// A feed that keeps failing for this long is treated as gone: its last known events are
+// dropped and fetching goes back to the normal interval.
+const STALE_EVENTS_MAX_MS = 60 * 60 * 1000;
+const DISCORD_UNKNOWN_USER = 10013;
 const DISCORD_DM_DISABLED = 50007;
 
 interface CachedEvents {
   lastFetched: number;
+  windowDays: number;
   events: CalendarEvent[];
+  /** When the current run of network failures began; unset while every feed is loading. */
+  failingSince?: number;
 }
 
-function resolveTimezone(tz?: string): string {
-  return tz && isValidTimezone(tz) ? tz.trim() : DEFAULT_TIMEZONE;
-}
+type DigestOutcome = 'sent' | 'undeliverable' | 'failed';
 
 /** Minutes since midnight for "HH:mm" or "H:mm"; plain string comparison breaks on unpadded hours. */
 function parseClockMinutes(value: string): number | null {
@@ -81,7 +87,9 @@ async function runWithConcurrency<T>(
 export class ReminderEngine {
   private client: Client;
   private cache = new Map<string, CachedEvents>();
-  private inflight = new Map<string, Promise<CalendarEvent[]>>();
+  // The latest wider-than-default window per user, so paging a long `/cal share` does not refetch.
+  private wideCache = new Map<string, CachedEvents>();
+  private inflight = new Map<string, Promise<CalendarFetchResult>>();
   private startupTimer: NodeJS.Timeout | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
@@ -110,16 +118,17 @@ export class ReminderEngine {
   }
 
   /**
-   * Refreshes events for a single user across all linked calendars. The default
-   * 7-day window is cached for the sync interval; concurrent callers share one fetch.
+   * Refreshes events for a single user across all linked calendars. Results are cached
+   * for the sync interval; concurrent callers share one fetch.
    */
   public async getUserEvents(
     user: UserCalendarConfig,
     forceRefresh = false,
     windowDays = DEFAULT_WINDOW_DAYS
   ): Promise<CalendarEvent[]> {
-    const cacheable = windowDays === DEFAULT_WINDOW_DAYS;
-    const cached = cacheable ? this.cache.get(user.userId) : undefined;
+    const store = windowDays === DEFAULT_WINDOW_DAYS ? this.cache : this.wideCache;
+    const entry = store.get(user.userId);
+    const cached = entry?.windowDays === windowDays ? entry : undefined;
     const cacheTtl = (config.syncIntervalMinutes || 5) * 60 * 1000;
 
     if (!forceRefresh && cached && Date.now() - cached.lastFetched < cacheTtl) {
@@ -128,19 +137,33 @@ export class ReminderEngine {
 
     const inflightKey = `${user.userId}:${windowDays}`;
     const pending = this.inflight.get(inflightKey);
-    if (pending) return pending.catch(() => cached?.events || []);
+    if (pending) {
+      return pending.then(
+        (result) => result.events,
+        () => cached?.events || []
+      );
+    }
 
+    const failingTooLong =
+      cached?.failingSince !== undefined && Date.now() - cached.failingSince > STALE_EVENTS_MAX_MS;
     const fetchPromise = CalendarSyncService.fetchMultipleCalendars(
       resolveUserCalendars(user),
-      windowDays
+      windowDays,
+      failingTooLong ? undefined : cached?.events
     );
     this.inflight.set(inflightKey, fetchPromise);
 
     try {
-      const events = await fetchPromise;
+      const { events, hadTransientFailure } = await fetchPromise;
       // Skip caching if the cache was invalidated (e.g. calendar linked) mid-fetch.
-      if (cacheable && this.inflight.get(inflightKey) === fetchPromise) {
-        this.cache.set(user.userId, { lastFetched: Date.now(), events });
+      if (this.inflight.get(inflightKey) === fetchPromise) {
+        const retrySoon = hadTransientFailure && !failingTooLong;
+        store.set(user.userId, {
+          lastFetched: retrySoon ? Date.now() - cacheTtl + FAILED_FETCH_RETRY_MS : Date.now(),
+          windowDays,
+          events,
+          failingSince: hadTransientFailure ? cached?.failingSince ?? Date.now() : undefined,
+        });
       }
       return events;
     } catch (err) {
@@ -153,8 +176,26 @@ export class ReminderEngine {
     }
   }
 
+  /**
+   * Makes the next read refetch. The old events stay as the fallback for a feed that
+   * fails with a network error, so a sync or an edit during a blip does not empty a calendar.
+   */
   public invalidateUserCache(userId: string) {
+    for (const store of [this.cache, this.wideCache]) {
+      const entry = store.get(userId);
+      if (entry) entry.lastFetched = 0;
+    }
+    this.dropInflight(userId);
+  }
+
+  /** Drops everything held in memory for a user whose data was deleted. */
+  public forgetUser(userId: string) {
     this.cache.delete(userId);
+    this.wideCache.delete(userId);
+    this.dropInflight(userId);
+  }
+
+  private dropInflight(userId: string) {
     for (const key of this.inflight.keys()) {
       if (key.startsWith(`${userId}:`)) this.inflight.delete(key);
     }
@@ -206,8 +247,10 @@ export class ReminderEngine {
 
   /** Drops cached feeds for users that were deleted or disabled so the cache cannot grow without bound. */
   private pruneCache(activeUserIds: Set<string>) {
-    for (const userId of this.cache.keys()) {
-      if (!activeUserIds.has(userId)) this.cache.delete(userId);
+    for (const store of [this.cache, this.wideCache]) {
+      for (const userId of store.keys()) {
+        if (!activeUserIds.has(userId)) store.delete(userId);
+      }
     }
   }
 
@@ -305,8 +348,12 @@ export class ReminderEngine {
   }
 
   public async sendDailyDigest(userId: string, isTest = false): Promise<boolean> {
+    return (await this.deliverDailyDigest(userId, isTest)) === 'sent';
+  }
+
+  private async deliverDailyDigest(userId: string, isTest: boolean): Promise<DigestOutcome> {
     const user = storage.getUser(userId);
-    if (!user) return false;
+    if (!user) return 'failed';
 
     try {
       const discordUser = await this.client.users.fetch(userId);
@@ -321,22 +368,13 @@ export class ReminderEngine {
         .filter((e) => ReminderEngine.isEventOnDay(e, todayKey, todayRange.start, todayRange.end))
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-      const dateHeader =
-        todayRange.dateLabel ||
-        now.toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'short',
-          day: 'numeric',
-          timeZone: tz,
-        });
-
       const embed = new EmbedBuilder()
         .setColor(0x5865f2) // Discord Blurple
         .setAuthor({
           name: `${isTest ? '🧪 [TEST] ' : '🌅 '}Daily Schedule Briefing`,
           iconURL: discordUser.displayAvatarURL(),
         })
-        .setTitle(`📅 Today's Agenda • ${dateHeader}`);
+        .setTitle(`📅 Today's Agenda • ${todayRange.dateLabel}`);
 
       if (todayEvents.length === 0) {
         embed.setDescription('🎉 **You have no events scheduled for today!** Enjoy your free day.');
@@ -373,10 +411,14 @@ export class ReminderEngine {
         '📅',
         `Dispatched daily schedule briefing to ${censorUsername(displayNameOf(discordUser))}${isTest ? ' (test)' : ''}`
       );
-      return true;
-    } catch (err) {
+      return 'sent';
+    } catch (err: any) {
+      if (err?.code === DISCORD_DM_DISABLED || err?.code === DISCORD_UNKNOWN_USER) {
+        console.warn(`Cannot send daily digest to user ${userId} (DMs disabled or account gone).`);
+        return 'undeliverable';
+      }
       console.error(`Failed to send daily digest to ${userId}:`, err);
-      return false;
+      return 'failed';
     }
   }
 
@@ -396,12 +438,16 @@ export class ReminderEngine {
         (parseClockMinutes(DEFAULT_DIGEST_TIME) as number);
       if (minutesSinceMidnightIn(now, tz) < targetMinutes) return;
 
-      if (await this.sendDailyDigest(user.userId, false)) {
-        // Re-read so a settings change saved while the digest was sending is not overwritten.
-        const latest = storage.getUser(user.userId) ?? user;
-        latest.lastDailyDigestDate = todayKey;
-        storage.saveUser(latest);
-      }
+      // A failed send is tried again on the next check. One that cannot arrive (DMs closed)
+      // counts as done for today, since retrying would refetch every feed each minute.
+      if ((await this.deliverDailyDigest(user.userId, false)) === 'failed') return;
+
+      // Re-read so a settings change saved while the digest was sending is not overwritten.
+      // A user who deleted their data in the meantime must not be saved back.
+      const latest = storage.getUser(user.userId);
+      if (!latest) return;
+      latest.lastDailyDigestDate = todayKey;
+      storage.saveUser(latest);
     } catch (err) {
       console.error(`Error checking daily digest for user ${user.userId}:`, err);
     }
