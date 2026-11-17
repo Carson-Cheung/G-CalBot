@@ -1,7 +1,4 @@
-/* ==========================================================================
-   G-CalBot Modern Dark UI Design System
-   Obsidian Theme with Glassmorphism, Ambient Glow & Responsive Layout
-   ========================================================================== */
+/* G-CalBot Dashboard Styles */
 
 :root {
   --white-rgb: 255, 255, 255;
@@ -49,9 +46,7 @@
   --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ==========================================================================
-   Reset & Base Styles
-   ========================================================================== */
+/* Base */
 
 * {
   box-sizing: border-box;
@@ -76,7 +71,6 @@ body {
   background-attachment: fixed;
 }
 
-/* Custom Slim Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -92,7 +86,6 @@ body {
   background: rgba(var(--white-rgb), 0.3);
 }
 
-/* Ambient Radial Glows */
 .ambient-glow {
   position: fixed;
   border-radius: 50%;
@@ -123,9 +116,7 @@ body {
   z-index: 1;
 }
 
-/* ==========================================================================
-   Top Navigation Bar
-   ========================================================================== */
+/* Navbar */
 
 .navbar {
   display: flex;
@@ -227,7 +218,6 @@ body {
   color: var(--text-muted);
 }
 
-/* Center Tabs */
 .nav-center-tabs {
   display: flex;
   align-items: center;
@@ -278,7 +268,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* Nav Right: User Pill / Demo Pill */
 .nav-right {
   display: flex;
   align-items: center;
@@ -393,7 +382,6 @@ body {
   color: var(--text-dim);
 }
 
-/* Demo Showcase Pill */
 .demo-showcase-pill {
   display: flex;
   align-items: center;
@@ -426,9 +414,7 @@ body {
   color: var(--text-muted);
 }
 
-/* ==========================================================================
-   Quick Actions Bar
-   ========================================================================== */
+/* Quick Actions */
 
 .quick-actions-bar {
   display: flex;
@@ -473,7 +459,6 @@ body {
   gap: 10px;
 }
 
-/* Buttons */
 .action-btn {
   display: inline-flex;
   align-items: center;
@@ -553,9 +538,7 @@ body {
   height: 14px;
 }
 
-/* ==========================================================================
-   KPI Stat Cards Grid
-   ========================================================================== */
+/* KPI Grid */
 
 .kpi-card,
 .controls-panel,
@@ -656,9 +639,7 @@ body {
   color: var(--text-dim);
 }
 
-/* ==========================================================================
-   Controls Panel: 7-Day Week Strip, Filters, Search
-   ========================================================================== */
+/* Controls & Week Strip */
 
 .controls-panel {
   padding: 18px 20px;
@@ -761,7 +742,6 @@ body {
   color: var(--indigo-200);
 }
 
-/* Filters & Search Row */
 .filters-search-row {
   display: flex;
   align-items: center;
@@ -820,7 +800,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* Search Box */
 .search-box-wrap {
   position: relative;
   display: flex;
@@ -868,9 +847,7 @@ body {
   color: var(--text-primary);
 }
 
-/* ==========================================================================
-   Timeline & Day Grouping
-   ========================================================================== */
+/* Timeline */
 
 .timeline-section {
   display: flex;
@@ -1088,7 +1065,6 @@ body {
   line-height: 1.45;
 }
 
-/* Empty & Loading States */
 .loading-card, .empty-timeline-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
@@ -1132,9 +1108,7 @@ body {
   max-width: 480px;
 }
 
-/* ==========================================================================
-   TAB 2: CALENDARS VIEW
-   ========================================================================== */
+/* Calendars Tab */
 
 .demo-notice-banner {
   display: flex;
@@ -1354,7 +1328,6 @@ body {
   margin-bottom: 4px;
 }
 
-/* Setup Guide Card */
 .guide-card {
   background: rgba(14, 14, 18, 0.8);
   border: 1px solid var(--border-subtle);
@@ -1428,7 +1401,6 @@ body {
   line-height: 1.4;
 }
 
-/* Connect Calendar Form */
 .connect-feed-form {
   display: flex;
   flex-direction: column;
@@ -1485,9 +1457,7 @@ body {
   font-size: 0.8rem;
 }
 
-/* ==========================================================================
-   TAB 3: SETTINGS VIEW
-   ========================================================================== */
+/* Settings Tab */
 
 .settings-max-width {
   max-width: 840px;
@@ -1520,7 +1490,6 @@ body {
   line-height: 1.4;
 }
 
-/* Lead Time Selector Cards */
 .lead-time-cards-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1604,7 +1573,6 @@ body {
   color: #f87171;
 }
 
-/* Timezone Row & Live Clock */
 .timezone-selector-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1656,7 +1624,6 @@ body {
   color: var(--blue-300);
 }
 
-/* Daily Digest Control Card */
 .daily-digest-control-card {
   display: flex;
   align-items: center;
@@ -1675,7 +1642,6 @@ body {
   gap: 14px;
 }
 
-/* Custom Toggle Switch */
 .toggle-switch {
   position: relative;
   display: inline-block;
@@ -1764,9 +1730,7 @@ body {
   justify-content: flex-end;
 }
 
-/* ==========================================================================
-   Toast Notification Popup
-   ========================================================================== */
+/* Toast */
 
 .toast-popup {
   position: fixed;
@@ -1811,9 +1775,7 @@ body {
   }
 }
 
-/* ==========================================================================
-   Responsive Adaptations
-   ========================================================================== */
+/* Responsive */
 
 @media (max-width: 1024px) {
   .kpi-grid {
@@ -1865,7 +1827,6 @@ body {
   }
 }
 
-/* Animations */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -1908,8 +1869,6 @@ body {
 .mb-2 { margin-bottom: 8px; }
 .text-danger { color: var(--danger-rose); }
 
-
-/* Settings legal links footer */
 .settings-footer-links {
   display: flex;
   align-items: center;

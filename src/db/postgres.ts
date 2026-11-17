@@ -18,10 +18,7 @@ export function withVerifiedSsl(connectionString: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}sslmode=verify-full`;
 }
 
-/**
- * Creates and configures a PostgreSQL connection pool. TLS settings come from the
- * connection string (see `withVerifiedSsl`).
- */
+/** Pool TLS settings come from the connection string (see `withVerifiedSsl`). */
 export function createPostgresPool(connectionString: string): Pool {
   const pool = new Pool({
     connectionString: withVerifiedSsl(connectionString),
@@ -37,9 +34,6 @@ export function createPostgresPool(connectionString: string): Pool {
   return pool;
 }
 
-/**
- * Initializes the normalized relational schema in PostgreSQL if tables do not exist.
- */
 export async function initPostgresSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -108,9 +102,6 @@ interface ReminderRow {
   sent_at: string | number;
 }
 
-/**
- * Loads all users, linked calendars, and sent reminders from PostgreSQL.
- */
 export async function loadAllFromPostgres(pool: Pool): Promise<{
   users: Record<string, UserCalendarConfig>;
   sentReminders: Record<string, number>;
@@ -170,9 +161,6 @@ export async function loadAllFromPostgres(pool: Pool): Promise<{
   return { users, sentReminders };
 }
 
-/**
- * Upserts a user and their linked calendars in PostgreSQL using a transaction.
- */
 export async function upsertUserToPostgres(
   pool: Pool,
   user: UserCalendarConfig
@@ -270,9 +258,6 @@ export async function deleteUserFromPostgres(
   }
 }
 
-/**
- * Upserts a sent reminder record into PostgreSQL.
- */
 export async function upsertReminderToPostgres(
   pool: Pool,
   key: string,
@@ -287,9 +272,6 @@ export async function upsertReminderToPostgres(
   );
 }
 
-/**
- * Cleans up sent reminders older than the cutoff timestamp.
- */
 export async function cleanupRemindersInPostgres(
   pool: Pool,
   cutoff: number

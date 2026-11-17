@@ -1,7 +1,3 @@
-/**
- * Time and timezone utilities for calendar calculations and share window parsing.
- */
-
 const DEFAULT_TIMEZONE = 'America/New_York';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TIME_24H_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
@@ -33,9 +29,6 @@ function getOffsetFormatter(timeZone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
-/**
- * Validates whether a given string is a valid IANA timezone identifier.
- */
 export function isValidTimezone(tz: string): boolean {
   if (!tz || typeof tz !== 'string') return false;
   try {
@@ -46,9 +39,6 @@ export function isValidTimezone(tz: string): boolean {
   }
 }
 
-/**
- * Validates whether a given string is a 24-hour time format (HH:mm or H:mm).
- */
 export function isValid24HourTime(time: string): boolean {
   if (!time || typeof time !== 'string') return false;
   return TIME_24H_PATTERN.test(time.trim());

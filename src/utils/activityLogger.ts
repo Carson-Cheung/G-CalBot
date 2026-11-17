@@ -35,10 +35,7 @@ export class ActivityLogger {
     this.prepopulate();
   }
 
-  /**
-   * Pre-populates the buffer with standard startup events so the activity feed
-   * displays a complete, authentic console view immediately upon launch.
-   */
+  /** Seeds the feed with startup entries until the first live event replaces them. */
   public prepopulate(): void {
     const baseTime = Date.now() - 30000;
     const initialEvents: Array<{
@@ -93,17 +90,12 @@ export class ActivityLogger {
     this.isPrePopulated = true;
   }
 
-  /**
-   * Appends an event to the ring buffer, maintaining up to the last 15 entries.
-   * Ensures live logging transitions smoothly from the synthetic pre-population.
-   */
   public log(
     type: ActivityLogType,
     icon: string,
     message: string
   ): ActivityLogEntry {
     if (this.isPrePopulated) {
-      // Clear synthetic seed on first live logging event
       this.logs = [];
       this.isPrePopulated = false;
     }
@@ -132,10 +124,6 @@ export class ActivityLogger {
     return entry;
   }
 
-  /**
-   * Retrieves the current ring buffer logs.
-   * @param order 'asc' for chronological (oldest to newest), 'desc' for newest first.
-   */
   public getLogs(order: 'asc' | 'desc' = 'asc'): ActivityLogEntry[] {
     const items = [...this.logs];
     return order === 'desc' ? items.reverse() : items;

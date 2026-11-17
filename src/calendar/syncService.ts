@@ -74,19 +74,17 @@ export class CalendarSyncService {
   public static sanitizeUrl(url: string): string {
     let clean = (url || '').trim();
 
-    // 1. If wrapped in an iframe embed snippet: <iframe src="https://..."></iframe>
+    // Iframe embed snippet: <iframe src="https://..."></iframe>
     const iframeMatch = clean.match(/src=["']([^"']+)["']/i);
     if (iframeMatch) {
       clean = iframeMatch[1].trim();
     }
 
-    // 2. Normalize webcal:// to https://
     if (clean.startsWith('webcal://')) {
       clean = 'https://' + clean.slice('webcal://'.length);
     }
 
-    // 3. Handle Google Calendar Embed URLs:
-    // e.g. https://calendar.google.com/calendar/embed?src=nba_-m-0bwjj_%2542oston%2B%2543eltics%23sports%40group.v.calendar.google.com&ctz=...
+    // Google Calendar embed URL, e.g. https://calendar.google.com/calendar/embed?src=nba_-m-0bwjj_%2542oston%2B%2543eltics%23sports%40group.v.calendar.google.com&ctz=...
     if (clean.includes('calendar.google.com') && clean.includes('embed')) {
       try {
         const parsed = new URL(clean);
@@ -105,8 +103,7 @@ export class CalendarSyncService {
       }
     }
 
-    // 4. Handle Google Calendar CID share links:
-    // e.g. https://calendar.google.com/calendar/r?cid=...
+    // Google Calendar CID share link, e.g. https://calendar.google.com/calendar/r?cid=...
     if (clean.includes('calendar.google.com') && clean.includes('cid=')) {
       try {
         const parsed = new URL(clean);
@@ -124,10 +121,10 @@ export class CalendarSyncService {
       } catch {}
     }
 
-    // 5. Handle raw Google Calendar IDs pasted directly:
-    // e.g. nba_-m-0bwjj_%42oston+%43eltics#sports@group.v.calendar.google.com
-    // or en.canadian#holiday@group.v.calendar.google.com
-    // or c_...#sports@group.v.calendar.google.com
+    // Raw Google Calendar IDs, e.g.:
+    // nba_-m-0bwjj_%42oston+%43eltics#sports@group.v.calendar.google.com
+    // en.canadian#holiday@group.v.calendar.google.com
+    // c_...#sports@group.v.calendar.google.com
     if (
       !clean.startsWith('http://') &&
       !clean.startsWith('https://') &&

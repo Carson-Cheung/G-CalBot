@@ -37,10 +37,8 @@ async function runMigration(): Promise<void> {
     await initPostgresSchema(pool);
     console.log('✅ Tables initialized successfully.');
 
-    // Aggregate users to migrate from data/database.json and DATABASE_BACKUP
     const usersToMigrate: Record<string, UserCalendarConfig> = {};
 
-    // 1. Load from data/database.json
     const dbJsonPath =
       config.storagePath || path.resolve(process.cwd(), 'data', 'database.json');
     if (fs.existsSync(dbJsonPath)) {
@@ -59,7 +57,6 @@ async function runMigration(): Promise<void> {
       }
     }
 
-    // 2. Load from DATABASE_BACKUP env var if present
     if (process.env.DATABASE_BACKUP) {
       try {
         const parsed = JSON.parse(process.env.DATABASE_BACKUP.trim());
@@ -91,7 +88,6 @@ async function runMigration(): Promise<void> {
       );
     }
 
-    // Verify by loading back from Neon PostgreSQL
     console.log('\n🔍 Querying Neon PostgreSQL to verify migrated data...');
     const verification = await loadAllFromPostgres(pool);
     const verifiedUsers = Object.values(verification.users);

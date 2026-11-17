@@ -369,7 +369,7 @@ export class ReminderEngine {
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
       const embed = new EmbedBuilder()
-        .setColor(0x5865f2) // Discord Blurple
+        .setColor(0x5865f2)
         .setAuthor({
           name: `${isTest ? '🧪 [TEST] ' : '🌅 '}Daily Schedule Briefing`,
           iconURL: discordUser.displayAvatarURL(),
