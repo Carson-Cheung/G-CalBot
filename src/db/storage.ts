@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
-import { config } from '../config';
+import { config, MAX_CALENDARS_PER_USER } from '../config';
 import { UserCalendarConfig, LinkedCalendar } from '../types';
 import {
   createPostgresPool,
@@ -19,8 +19,34 @@ interface DatabaseSchema {
   sentReminders: Record<string, number>; // key: `${userId}:${eventId}:${leadMinutes}` -> timestamp
 }
 
+const PG_CONNECT_ATTEMPTS = 3;
+const PG_CONNECT_RETRY_MS = 2_000;
+const PG_WRITE_ATTEMPTS = 3;
+const PG_WRITE_RETRY_MS = 500;
+
 function reminderKey(userId: string, eventId: string, leadMinutes: number): string {
   return `${userId}:${eventId}:${leadMinutes}`;
+}
+
+// Bad data, constraint violations and syntax errors (SQLSTATE classes 22, 23 and 42)
+// fail the same way every time, so only other errors, such as a dropped connection, are retried.
+const PERMANENT_SQL_ERROR = /^(22|23|42)[0-9A-Z]{3}$/;
+
+function isPermanentSqlError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && PERMANENT_SQL_ERROR.test(code);
+}
+
+/** Runs a database call that is safe to repeat, pausing a little longer after each failure. */
+async function withRetry<T>(run: () => Promise<T>, attempts: number, delayMs: number): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      if (attempt >= attempts || isPermanentSqlError(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
 }
 
 class Storage {
@@ -28,6 +54,7 @@ class Storage {
   private data: DatabaseSchema = { users: {}, sentReminders: {} };
   private pool: Pool | null = null;
   private pgWriteChain: Promise<void> = Promise.resolve();
+  private closing: Promise<void> | null = null;
 
   constructor() {
     this.filePath = config.storagePath;
@@ -125,7 +152,9 @@ class Storage {
 
     const pool = createPostgresPool(config.databaseUrl);
     try {
-      await initPostgresSchema(pool);
+      // A serverless database can take a few seconds to wake, and falling back to the
+      // local file would hide every user's calendars until the next restart.
+      await withRetry(() => initPostgresSchema(pool), PG_CONNECT_ATTEMPTS, PG_CONNECT_RETRY_MS);
       const pgData = await loadAllFromPostgres(pool);
       const localUsers = { ...this.data.users };
 
@@ -173,7 +202,13 @@ class Storage {
     return this.pool !== null;
   }
 
-  public async close(): Promise<void> {
+  /** Safe to call more than once: later callers wait for the same shutdown. */
+  public close(): Promise<void> {
+    this.closing ??= this.closePool();
+    return this.closing;
+  }
+
+  private async closePool(): Promise<void> {
     if (!this.pool) return;
     const activePool = this.pool;
     this.pool = null;
@@ -203,12 +238,13 @@ class Storage {
   /**
    * Serializes Postgres writes so a delete can never be overtaken by an
    * earlier upsert for the same user (which would resurrect the row).
+   * Every write is an upsert or a delete, so a failed one is simply tried again.
    */
   private enqueuePgWrite(description: string, write: (pool: Pool) => Promise<void>) {
     const activePool = this.pool;
     if (!activePool) return;
     this.pgWriteChain = this.pgWriteChain
-      .then(() => write(activePool))
+      .then(() => withRetry(() => write(activePool), PG_WRITE_ATTEMPTS, PG_WRITE_RETRY_MS))
       .catch((err) => {
         console.error(`Failed to ${description} in Neon PostgreSQL:`, err);
       });
@@ -250,9 +286,41 @@ class Storage {
     return true;
   }
 
+  /** True when linking `url` would put the user over the limit. Re-linking a URL they already have never does. */
+  public isAtCalendarLimit(userId: string, url: string): boolean {
+    const calendars = this.getUser(userId)?.calendars ?? [];
+    return calendars.length >= MAX_CALENDARS_PER_USER && !calendars.some((c) => c.url === url);
+  }
+
+  /**
+   * Why `name` cannot be used for the calendar at `url`, or null when it is fine.
+   * Commands address calendars by name, so names are unique per user.
+   */
+  public calendarNameProblem(userId: string, name: string, url: string): string | null {
+    const target = name.trim().toLowerCase();
+    if (target === 'all') return 'The name "all" is reserved. Please choose another name.';
+    const taken = this.getUser(userId)?.calendars.some(
+      (c) => c.url !== url && c.name.toLowerCase() === target
+    );
+    return taken ? 'You already have a calendar with that name. Please choose another name.' : null;
+  }
+
+  /** "Primary" for the first calendar, then the first unused "Calendar N". */
+  private defaultCalendarName(calendars: LinkedCalendar[]): string {
+    if (calendars.length === 0) return 'Primary';
+    const names = new Set(calendars.map((c) => c.name.toLowerCase()));
+    let n = calendars.length + 1;
+    while (names.has(`calendar ${n}`)) n++;
+    return `Calendar ${n}`;
+  }
+
+  /**
+   * Links a calendar. Linking a URL the user already has renames that calendar
+   * (when a name is given) and keeps its ID, colour and position.
+   */
   public addCalendar(
     userId: string,
-    name: string,
+    name: string | undefined,
     url: string,
     reminderMinutes = 10
   ): LinkedCalendar {
@@ -266,25 +334,28 @@ class Storage {
       updatedAt: now,
     };
 
-    const newCal: LinkedCalendar = {
-      id: `cal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      name: name || `Calendar ${user.calendars.length + 1}`,
-      url,
-      addedAt: now,
-    };
-
     const existingIndex = user.calendars.findIndex((c) => c.url === url);
+    let calendar: LinkedCalendar;
     if (existingIndex >= 0) {
-      user.calendars[existingIndex] = newCal;
+      const existing = user.calendars[existingIndex]!;
+      calendar = { ...existing, name: name || existing.name };
+      user.calendars[existingIndex] = calendar;
     } else {
-      user.calendars.push(newCal);
+      calendar = {
+        id: `cal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: name || this.defaultCalendarName(user.calendars),
+        url,
+        addedAt: now,
+      };
+      user.calendars.push(calendar);
     }
 
     user.updatedAt = now;
     this.saveUser(user);
-    return newCal;
+    return calendar;
   }
 
+  /** Removes one calendar by ID or name, or every calendar when no identifier (or "all") is given. */
   public removeCalendar(userId: string, identifier?: string): boolean {
     const user = this.getUser(userId);
     if (!user || user.calendars.length === 0) return false;
@@ -297,12 +368,9 @@ class Storage {
       return true;
     }
 
-    const target = identifier.toLowerCase();
-    const initialLen = user.calendars.length;
-    user.calendars = user.calendars.filter(
-      (c) => c.id.toLowerCase() !== target && c.name.toLowerCase() !== target
-    );
-    if (user.calendars.length === initialLen) return false;
+    const target = this.findCalendar(user, identifier);
+    if (!target) return false;
+    user.calendars = user.calendars.filter((c) => c !== target);
 
     if (user.calendars.length === 0) {
       delete user.icalUrl;

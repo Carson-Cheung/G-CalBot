@@ -2,20 +2,29 @@ import { Pool } from 'pg';
 import { UserCalendarConfig } from '../types';
 import { resolveUserCalendars } from './userDefaults';
 
+const UNVERIFIED_SSL_MODE = /([?&]sslmode=)(?:require|prefer|verify-ca)(?=&|$)/;
+
 /**
- * Creates and configures a PostgreSQL connection pool with SSL enabled for Neon PostgreSQL.
+ * Makes the connection check the server's TLS certificate. node-postgres already treats
+ * `require`, `prefer` and `verify-ca` as `verify-full` but warns that a later version will
+ * stop checking, so the mode is spelled out. A URL with no sslmode gets `verify-full` too.
+ * `sslmode=disable` (local server without TLS) and `sslmode=no-verify` (self-signed
+ * certificate) are left as written.
+ */
+export function withVerifiedSsl(connectionString: string): string {
+  const url = connectionString.trim();
+  if (UNVERIFIED_SSL_MODE.test(url)) return url.replace(UNVERIFIED_SSL_MODE, '$1verify-full');
+  if (/[?&]sslmode=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}sslmode=verify-full`;
+}
+
+/**
+ * Creates and configures a PostgreSQL connection pool. TLS settings come from the
+ * connection string (see `withVerifiedSsl`).
  */
 export function createPostgresPool(connectionString: string): Pool {
-  let normalizedUrl = connectionString.trim();
-  if (
-    normalizedUrl.includes('sslmode=require') &&
-    !normalizedUrl.includes('uselibpqcompat=')
-  ) {
-    normalizedUrl += `${normalizedUrl.includes('?') ? '&' : '?'}uselibpqcompat=true`;
-  }
   const pool = new Pool({
-    connectionString: normalizedUrl,
-    ssl: { rejectUnauthorized: false },
+    connectionString: withVerifiedSsl(connectionString),
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,

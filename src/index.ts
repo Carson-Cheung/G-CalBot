@@ -6,6 +6,7 @@ import { createServer } from './server/app';
 import { activityLogger } from './utils/activityLogger';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const FLUSH_TIMEOUT_MS = 3_000;
 
 function checkConfigOrExit(): void {
   const { errors, warnings } = validateConfig();
@@ -67,7 +68,12 @@ async function bootstrap() {
 
     const forceExit = setTimeout(() => {
       console.error('Graceful shutdown timed out; forcing exit.');
-      process.exit(1);
+      // Queued database writes still get a short moment to land before the process goes.
+      setTimeout(() => process.exit(1), FLUSH_TIMEOUT_MS).unref();
+      void storage
+        .close()
+        .catch(() => {})
+        .finally(() => process.exit(1));
     }, SHUTDOWN_TIMEOUT_MS);
     forceExit.unref();
 
