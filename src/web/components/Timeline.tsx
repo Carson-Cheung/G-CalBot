@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { AlertCircle, CalendarCheck2, CalendarDays, Plus, RefreshCw } from 'lucide-react';
 import type { CalendarEvent, CalendarFeed } from '../types';
-import { formatGroupDateHeader, getDayKey } from '../utils/dates';
+import { formatGroupDateHeader, getDisplayDayKey } from '../utils/dates';
 import { EventCard } from './EventCard';
 
 interface TimelineProps {
@@ -39,7 +39,7 @@ export function Timeline({
   const groups = useMemo(() => {
     const byDay = new Map<string, CalendarEvent[]>();
     for (const event of events) {
-      const key = getDayKey(event.start, timezone, event.isAllDay);
+      const key = getDisplayDayKey(event, timezone, now);
       const list = byDay.get(key);
       if (list) list.push(event);
       else byDay.set(key, [event]);

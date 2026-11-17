@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { CalendarEvent, CalendarFeed, TabId } from '../types';
 import type { ScheduleFilters } from '../hooks/useScheduleFilters';
-import { getDayKey, getNextEventCountdown } from '../utils/dates';
+import { getDayKey, getDisplayDayKey, getNextEventCountdown } from '../utils/dates';
 import { DAY_MS } from '../constants';
 import { FeedFilters } from './FeedFilters';
 import { KpiGrid } from './KpiGrid';
@@ -39,7 +39,13 @@ export function ScheduleTab({
   onRetry,
   onNavigate,
 }: ScheduleTabProps) {
-  const { selectedFeed, searchQuery, selectedDayKey } = filters;
+  const { selectedFeed, searchQuery, selectedDayKey, setSelectedFeed } = filters;
+
+  useEffect(() => {
+    if (hasData && selectedFeed !== 'all' && !calendars.some(c => c.name === selectedFeed)) {
+      setSelectedFeed('all');
+    }
+  }, [hasData, selectedFeed, calendars, setSelectedFeed]);
 
   const weekStrip = useMemo<WeekDay[]>(() => {
     const days: WeekDay[] = [];
@@ -48,7 +54,7 @@ export function ScheduleTab({
       const key = getDayKey(d.toISOString(), timezone, false);
       const [y, m, dayNum] = key.split('-').map(Number);
       const dayName = new Date(y, m - 1, dayNum).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
-      const count = events.filter(e => getDayKey(e.start, timezone, e.isAllDay) === key).length;
+      const count = events.filter(e => getDisplayDayKey(e, timezone, now) === key).length;
       days.push({ key, dayName, dayNum, count, isToday: i === 0 });
     }
     return days;
@@ -59,14 +65,14 @@ export function ScheduleTab({
     const query = searchQuery.trim().toLowerCase();
     return events.filter(event => {
       if (selectedFeed !== 'all' && (event.calendarName || '').trim().toLowerCase() !== feed) return false;
-      if (selectedDayKey && getDayKey(event.start, timezone, event.isAllDay) !== selectedDayKey) return false;
+      if (selectedDayKey && getDisplayDayKey(event, timezone, now) !== selectedDayKey) return false;
       if (query) {
         const haystack = [event.title, event.location, event.description].map(v => (v || '').toLowerCase());
         if (!haystack.some(v => v.includes(query))) return false;
       }
       return true;
     });
-  }, [events, selectedFeed, selectedDayKey, searchQuery, timezone]);
+  }, [events, selectedFeed, selectedDayKey, searchQuery, timezone, now]);
 
   const nextEvent = useMemo(() => getNextEventCountdown(events, now.getTime()), [events, now]);
 

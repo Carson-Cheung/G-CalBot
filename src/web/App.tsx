@@ -13,6 +13,7 @@ import { useScheduleFilters } from './hooks/useScheduleFilters';
 import { useSettingsForm } from './hooks/useSettingsForm';
 import { useToast } from './hooks/useToast';
 import type { TabId } from './types';
+import { dropEndedEvents } from './utils/dates';
 
 const CLOCK_TICK_MS = 30_000;
 
@@ -31,7 +32,10 @@ export function App() {
   const reload = useCallback(() => refresh(false), [refresh]);
   const settings = useSettingsForm(data, userId, sessionToken, notify, reload);
 
-  const events = useMemo(() => data?.events ?? [], [data]);
+  const events = useMemo(
+    () => dropEndedEvents(data?.events ?? [], settings.timezone, now),
+    [data, settings.timezone, now],
+  );
   const calendars = useMemo(() => data?.calendars ?? [], [data]);
 
   const handleConnected = useCallback(async () => {

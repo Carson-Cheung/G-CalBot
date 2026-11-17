@@ -9,6 +9,8 @@ export function useCalendarData(userId: string, token: string | null, ready: boo
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const refresh = useCallback(
     async (sync = false) => {
@@ -28,7 +30,7 @@ export function useCalendarData(userId: string, token: string | null, ready: boo
         const message = err instanceof Error ? err.message : 'Failed to load schedule data';
         console.error('Error fetching calendar data:', err);
         setError(message);
-        if (sync) notify('Failed to refresh schedule: ' + message, 'error');
+        if (sync || dataRef.current) notify('Failed to refresh schedule: ' + message, 'error');
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -41,6 +43,8 @@ export function useCalendarData(userId: string, token: string | null, ready: boo
 
   useEffect(() => {
     if (!ready) return;
+    setData(null);
+    setError(null);
     setLoading(true);
     refresh(false);
     return () => controllerRef.current?.abort();

@@ -8,6 +8,8 @@ import type {
   UserCalendarData,
 } from './types';
 
+export const UNAUTHORIZED_EVENT = 'gcalbot:unauthorized';
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -45,6 +47,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string'
       ? (data as { error: string }).error
       : null;
+
+  if (res.status === 401 && options.token) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
 
   if (!res.ok || errorMessage) {
     throw new ApiError(errorMessage || `Request failed (${res.status})`, res.status);

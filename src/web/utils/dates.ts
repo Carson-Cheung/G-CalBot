@@ -33,6 +33,28 @@ export function getDayKey(isoString: string, tz?: string, isAllDay?: boolean): s
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Events that are running or still to come. The server keeps an all-day event for a day
+ * after it ends, and an all-day end date is exclusive.
+ */
+export function dropEndedEvents(events: CalendarEvent[], tz: string | undefined, now: Date): CalendarEvent[] {
+  const todayKey = getDayKey(now.toISOString(), tz, false);
+  return events.filter(e =>
+    e.isAllDay ? getDayKey(e.end, tz, true) > todayKey : new Date(e.end).getTime() >= now.getTime()
+  );
+}
+
+/** Day an event is listed under: its start day, or today when it began earlier and is still ongoing. */
+export function getDisplayDayKey(
+  event: Pick<CalendarEvent, 'start' | 'isAllDay'>,
+  tz: string | undefined,
+  now: Date
+): string {
+  const key = getDayKey(event.start, tz, event.isAllDay);
+  const todayKey = getDayKey(now.toISOString(), tz, false);
+  return key < todayKey ? todayKey : key;
+}
+
 export function formatGroupDateHeader(dayKey: string, tz: string | undefined, now: Date): string {
   const [y, m, d] = dayKey.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -55,7 +77,7 @@ export function formatEventTime(startIso: string, endIso: string, isAllDay: bool
     const timeOptions: Intl.DateTimeFormatOptions = {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false,
+      hourCycle: 'h23',
       ...(tz ? { timeZone: tz } : {}),
     };
     const startFormatted = new Date(startIso).toLocaleTimeString(undefined, timeOptions);
@@ -73,7 +95,7 @@ export function formatClock(now: Date, tz: string): string {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false,
+      hourCycle: 'h23',
       timeZoneName: 'short',
     }).format(now);
   } catch {
@@ -97,6 +119,8 @@ export function getRelativeBadge(
 
   if (isAllDay) {
     if (startKey === todayKey) return { text: 'Today', urgent: true };
+    // Multi-day all-day event that began earlier and is still listed.
+    if (startKey < todayKey) return { text: 'Today', urgent: true };
     if (startKey === tomorrowKey) return { text: 'Tomorrow', urgent: false };
     const [sy, sm, sd] = startKey.split('-').map(Number);
     const [ty, tm, td] = todayKey.split('-').map(Number);

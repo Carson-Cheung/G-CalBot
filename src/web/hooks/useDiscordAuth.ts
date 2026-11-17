@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DiscordSDK } from '@discord/embedded-app-sdk';
-import { api } from '../api';
+import { api, UNAUTHORIZED_EVENT } from '../api';
 import { DEMO_USER_ID, SESSION_STORAGE_KEY } from '../constants';
 import type { DiscordUser } from '../types';
 import { safeStorage } from '../utils/storage';
@@ -53,7 +53,7 @@ async function requestSession(code: string): Promise<{ user: DiscordUser; token:
   try {
     const data = await api.exchangeCode(code);
     if (!data.user) return null;
-    return { user: data.user, token: data.sessionToken || data.access_token || null };
+    return { user: data.user, token: data.sessionToken ?? null };
   } catch {
     return null;
   }
@@ -198,6 +198,7 @@ export function useDiscordAuth(notify: Notify) {
       if (!insideDiscord) {
         const storedToken = safeStorage.getItem(SESSION_STORAGE_KEY);
         if (storedToken) {
+          let invalid = true;
           try {
             const session = await api.verifySession(storedToken);
             if (cancelled) return;
@@ -212,9 +213,10 @@ export function useDiscordAuth(notify: Notify) {
               return;
             }
           } catch {
-            // invalid or expired token; dropped below
+            // network or server error: the token may still be valid, so keep it
+            invalid = false;
           }
-          safeStorage.removeItem(SESSION_STORAGE_KEY);
+          if (invalid) safeStorage.removeItem(SESSION_STORAGE_KEY);
         }
       } else {
         safeStorage.removeItem(SESSION_STORAGE_KEY);
@@ -279,6 +281,19 @@ export function useDiscordAuth(notify: Notify) {
     enterDemo();
     notify('Signed out of personal session. Switched to Public Demo Showcase.', 'info');
   }, [enterDemo, notify]);
+
+  useEffect(() => {
+    const onUnauthorized = () => {
+      safeStorage.removeItem(SESSION_STORAGE_KEY);
+      setAuthUser(null);
+      setSessionToken(null);
+      setUserId(DEMO_USER_ID);
+      setIsDemo(true);
+      notify('Session expired. Run /dash again or sign in.', 'info');
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [notify]);
 
   const toggleDemo = useCallback(() => {
     if (isDemo && authUser) {

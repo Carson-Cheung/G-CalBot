@@ -5,7 +5,6 @@ export interface DiscordUser {
   global_name?: string;
   avatar?: string;
   avatarUrl?: string;
-  discriminator?: string;
 }
 
 export interface CalendarFeed {
@@ -51,7 +50,6 @@ export type TabId = 'schedule' | 'calendars' | 'settings';
 export interface AuthResponse {
   user?: DiscordUser;
   sessionToken?: string;
-  access_token?: string;
 }
 
 export interface SessionResponse {
@@ -61,7 +59,6 @@ export interface SessionResponse {
 
 export interface HealthResponse {
   storage?: string;
-  time?: string;
 }
 
 export interface SettingsPayload {
