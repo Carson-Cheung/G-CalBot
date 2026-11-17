@@ -75,7 +75,7 @@ const CATEGORIES: CommandCategory[] = [
         example: '/cal settings remind_before:1h30m   (0, 45m, 2h, 1d)',
       },
       {
-        usage: '/calendar daily [time] [enabled] [timezone]',
+        usage: '/calendar daily [time] [enabled] [timezone] [test]',
         alias: '/cal daily',
         description: 'Get a morning summary of your day at a time you choose',
         example: '/cal daily time:08:30 timezone:America/Toronto',

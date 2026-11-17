@@ -10,7 +10,7 @@ import { commandsMap } from './commands';
 import { ReminderEngine } from '../calendar/reminderEngine';
 import { deployCommands } from './deploy-commands';
 import { activityLogger, censorUsername } from '../utils/activityLogger';
-import { replyError } from './helpers';
+import { EPHEMERAL, replyError } from './helpers';
 import { isPagerId } from './pager';
 import { handlePagerInteraction } from './pagerRoutes';
 import {
@@ -68,6 +68,12 @@ export function createBot() {
         await handleDeleteDataButton(interaction, reminderEngine);
       } catch (err) {
         console.error('Error handling data deletion:', err);
+        const notice = {
+          content: '❌ Something went wrong. Please run `/cal deletedata` again.',
+          flags: EPHEMERAL,
+        } as const;
+        const answered = interaction.replied || interaction.deferred;
+        await (answered ? interaction.followUp(notice) : interaction.reply(notice)).catch(() => {});
       }
       return;
     }
@@ -90,6 +96,7 @@ export function createBot() {
     if (!command?.execute) {
       console.warn(`Unrecognized command received: ${interaction.commandName}`);
       activityLogger.log('warn', '⚠️', `Unrecognized command received: ${description}`);
+      await replyError(interaction, 'That command is no longer available. Run `/comms` to see the current list.');
       return;
     }
 

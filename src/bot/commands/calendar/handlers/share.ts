@@ -36,11 +36,12 @@ export async function renderSharePage(
     tz,
   );
 
-  // Windows up to a week reuse the cached 7-day fetch; longer ones need their own.
-  const allEvents =
-    windowDays <= VIEW_WINDOW_DAYS
-      ? await reminderEngine.getUserEvents(user, refresh)
-      : await reminderEngine.getUserEvents(user, true, windowDays);
+  // Windows up to a week reuse the cached 7-day fetch; longer ones are fetched and cached on their own.
+  const allEvents = await reminderEngine.getUserEvents(
+    user,
+    refresh,
+    Math.max(windowDays, VIEW_WINDOW_DAYS),
+  );
   const inWindow = allEvents.filter(
     (e) => e.start.getTime() <= cutoff.getTime() && e.end.getTime() >= now.getTime(),
   );

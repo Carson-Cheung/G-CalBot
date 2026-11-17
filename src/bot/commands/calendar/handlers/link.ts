@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, escapeMarkdown } from 'discord.js';
 import { CalendarSyncService } from '../../../../calendar/syncService';
 import { ReminderEngine } from '../../../../calendar/reminderEngine';
 import { MAX_CALENDARS_PER_USER } from '../../../../config';
@@ -29,12 +29,13 @@ export async function handleLink(
     });
   }
 
-  const current = storage.getUser(userId);
-  const alreadyLinked = current?.calendars.some((c) => c.url === cleanUrl) ?? false;
-  if (!alreadyLinked && (current?.calendars.length ?? 0) >= MAX_CALENDARS_PER_USER) {
-    return interaction.editReply({
-      content: `❌ You can link up to ${MAX_CALENDARS_PER_USER} calendars. Use \`/cal unlink\` to remove one first.`,
-    });
+  const limitMessage = `❌ You can link up to ${MAX_CALENDARS_PER_USER} calendars. Use \`/cal unlink\` to remove one first.`;
+  if (storage.isAtCalendarLimit(userId, cleanUrl)) {
+    return interaction.editReply({ content: limitMessage });
+  }
+  const nameProblem = customName && storage.calendarNameProblem(userId, customName, cleanUrl);
+  if (nameProblem) {
+    return interaction.editReply({ content: `❌ ${nameProblem}` });
   }
 
   try {
@@ -45,18 +46,16 @@ export async function handleLink(
       customName,
     );
 
-    const existing = storage.getUser(userId);
-    const calendarName =
-      customName ||
-      (existing && existing.calendars.length > 0
-        ? `Calendar ${existing.calendars.length + 1}`
-        : 'Primary');
+    // Checked again because another /cal link may have finished while this feed was downloading.
+    if (storage.isAtCalendarLimit(userId, cleanUrl)) {
+      return interaction.editReply({ content: limitMessage });
+    }
 
     const linked = storage.addCalendar(
       userId,
-      calendarName,
+      customName,
       cleanUrl,
-      existing?.reminderMinutes ?? DEFAULT_REMINDER_MINUTES,
+      storage.getUser(userId)?.reminderMinutes ?? DEFAULT_REMINDER_MINUTES,
     );
     reminderEngine.invalidateUserCache(userId);
 
@@ -65,7 +64,7 @@ export async function handleLink(
       .setColor(EMBED_COLORS.GOOGLE_GREEN)
       .setTitle('✅ Calendar Connected Successfully!')
       .setDescription(
-        `Connected **${linked.name}**!\n` +
+        `Connected **${escapeMarkdown(linked.name)}**!\n` +
           `Found **${events.length} event(s)** in this calendar for the next ${VIEW_WINDOW_DAYS} days.\n` +
           `You now have **${user.calendars.length} connected calendar(s)**.\n` +
           (user.reminderMinutes === 0
@@ -77,7 +76,7 @@ export async function handleLink(
     if (events.length > 0) {
       const previewList = events
         .slice(0, LINK_PREVIEW_EVENTS)
-        .map((e) => `• **${e.title}** (<t:${toUnix(e.start)}:R>)`)
+        .map((e) => `• **${escapeMarkdown(e.title)}** (<t:${toUnix(e.start)}:R>)`)
         .join('\n');
       embed.addFields({
         name: 'Upcoming Preview',

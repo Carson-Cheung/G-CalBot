@@ -45,7 +45,7 @@ It has two parts:
 | `/calendar test` | `/cal test` | Send a test reminder DM | Private |
 | `/calendar guide` | `/cal guide` | Step-by-step walkthrough for finding your secret iCal address | Private |
 | `/open` | `/o` | Get a button that opens Google Calendar | Private |
-| `/dashboard` | `/dash`, `/act` | Launch the Activity dashboard | Channel |
+| `/dashboard` | `/dash`, `/act` | Launch the Activity dashboard | Private |
 | `/commands` | `/comms` | List every command | Private |
 | `/calendar deletedata` | `/cal deletedata` | Permanently delete everything the bot stores about you | Private |
 

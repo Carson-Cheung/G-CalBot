@@ -9,6 +9,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // A multi-day event is listed on at most this many day pages.
 const MAX_DAYS_PER_EVENT = 14;
 const DESCRIPTION_MAX = 4000;
+// Discord rejects an embed description over 4096 characters; this leaves room for the
+// calendar heading and the "…and N more" line.
+const GROUP_DESCRIPTION_MAX = 3900;
+
+/** Event text comes from other people's invites, so `[text](url)` must not render as a disguised link. */
+function plain(text: string): string {
+  return escapeMarkdown(text, { maskedLink: true });
+}
 
 export interface DayGroup {
   key: string;
@@ -82,12 +90,12 @@ export function formatDayEvents(
     const end = toUnix(event.end);
     const details = [
       event.isAllDay ? 'All day' : `<t:${start}:t> – <t:${end}:t> (<t:${start}:R>)`,
-      event.location ? `📍 ${escapeMarkdown(event.location.slice(0, 200))}` : null,
-      showCalendar && event.calendarName ? `🗂️ ${escapeMarkdown(event.calendarName)}` : null,
+      event.location ? `📍 ${plain(event.location.slice(0, 200))}` : null,
+      showCalendar && event.calendarName ? `🗂️ ${plain(event.calendarName)}` : null,
     ].filter((line): line is string => Boolean(line));
 
     const lines = details.map((line, i) => `${i === details.length - 1 ? '╰' : '├'} ${line}`);
-    const title = escapeMarkdown(event.title.trim().slice(0, 200)) || '(untitled)';
+    const title = plain(event.title.trim().slice(0, 200)) || '(untitled)';
     return [`**${title}**`, ...lines].join('\n');
   });
 
@@ -134,12 +142,15 @@ export function buildDayEmbeds(
     groups.push({ name: 'More calendars', color: rest[0]!.color, events: rest.flatMap((g) => g.events) });
   }
 
-  const perEmbed = Math.max(300, Math.floor(TOTAL_EMBED_BUDGET / Math.max(groups.length, 1)) - 100);
+  const perEmbed = Math.min(
+    GROUP_DESCRIPTION_MAX,
+    Math.max(300, Math.floor(TOTAL_EMBED_BUDGET / Math.max(groups.length, 1)) - 100),
+  );
   const embeds = groups.map((group) =>
     new EmbedBuilder()
       .setColor(hexToNumber(group.color.hex))
       .setDescription(
-        `${group.color.emoji} **${escapeMarkdown(group.name.slice(0, 100))}**
+        `${group.color.emoji} **${plain(group.name.slice(0, 100))}**
 
 ${formatDayEvents(group.events, false, perEmbed)}`,
       ),

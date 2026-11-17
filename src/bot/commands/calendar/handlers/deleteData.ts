@@ -53,7 +53,7 @@ export async function handleDeleteDataButton(
   }
 
   const deleted = storage.deleteUser(interaction.user.id);
-  reminderEngine.invalidateUserCache(interaction.user.id);
+  reminderEngine.forgetUser(interaction.user.id);
 
   return interaction.update({
     content: deleted
